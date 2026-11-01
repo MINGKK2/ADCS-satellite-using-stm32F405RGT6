@@ -34,7 +34,7 @@ Không hạ ma trận có hệ số ngoài đường chéo hoặc hiệu chuẩn
 - Hiệu chuẩn: CRC, mất điện ở mọi word ghi, journal đầy không xóa, v1/v2 đường chéo, bản chụp Flash thực tế.
 - Viewer: góc đo tách target, dữ liệu cũ/mất/trùng gói, cảnh báo la bàn, calib Flash, mô hình CAD 24 phần và checksum.
 
-**Chưa xác minh trong lần khôi phục này:** nạp lên board, telemetry radio sau nạp, đáp ứng cơ khí/motor hoặc giữ tư thế thực tế. Không có phép thử motor tự động trong quy trình khôi phục.
+**Đã xác minh trên board:** nạp DFU và verify thành công; chỉ xóa sector 0–4; SHA-256 sector 11 trước/sau giống nhau; ứng dụng khởi động ở COM21. **Chưa xác minh:** telemetry radio sau nạp, đáp ứng cơ khí/motor hoặc giữ tư thế thực tế. PID không được bật và không chạy thử motor trong quy trình khôi phục.
 
 ## Kết nối giữ nguyên
 

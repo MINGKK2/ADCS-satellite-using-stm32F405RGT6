@@ -24,7 +24,7 @@
     0,
     0
   ],
-  "hardware_verification": "not flashed or motor-tested during this restore",
+  "hardware_verification": "DFU download verified; calibration journal unchanged; application enumerates COM21. No motor/attitude-hold test after rollback.",
   "artifacts": {
     "STM32CubeIDE.elf": {
       "bytes": 1433028,

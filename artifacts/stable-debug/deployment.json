@@ -1,0 +1,21 @@
+{
+  "flashed_utc": "2026-11-01T05:02:28.6578410Z",
+  "firmware_sha256": "610C55BA97FB97700C5359B4419866AF23CA1614BDB7B7E121A5ED1443B0BDE5",
+  "source_commit": "a205eba45438272391a2bf174521af14920b1f7f",
+  "device_id": "0x413",
+  "verified": true,
+  "erased_sectors": [
+    0,
+    1,
+    2,
+    3,
+    4
+  ],
+  "calibration_sha256_before": "ACD5685B45E3A307D8F40256D1B56AD79DE623F72AC268B8E3D5F6CB8B528B59",
+  "calibration_sha256_after": "ACD5685B45E3A307D8F40256D1B56AD79DE623F72AC268B8E3D5F6CB8B528B59",
+  "calibration_unchanged": true,
+  "application_start": true,
+  "motor_test_performed": false,
+  "usb_application_port": "COM21",
+  "pid_armed_by_agent": false
+}
