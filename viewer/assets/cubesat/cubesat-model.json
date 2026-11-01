@@ -1,0 +1,554 @@
+{
+  "version": 1,
+  "source": "Assembled STL exports supplied by user",
+  "units": "mm",
+  "cadOriginMm": [
+    1334.8778076171875,
+    640.4357299804688,
+    889.0120849609375
+  ],
+  "cadToDisplayScale": 0.017341040462427744,
+  "dimensionsMm": [
+    153.9656982421875,
+    173.0,
+    160.0
+  ],
+  "axisConvention": "CAD X=body X, CAD Y=body Y, CAD Z=body Z; display convention, verify physical mounting",
+  "colors": "Illustrative; STL has no original CAD material colors",
+  "parts": [
+    {
+      "name": "3D_PCB_PCB_WeAct STM32F405RGT6_2_2026-02-14_2026-02-14.step-1",
+      "kind": "mcu",
+      "sourceFile": "fullbody - 3D_PCB_PCB_WeAct STM32F405RGT6_2_2026-02-14_2026-02-14.step-1.STL",
+      "positionOffset": 0,
+      "vertexCount": 21451,
+      "indexOffset": 257412,
+      "indexCount": 100647,
+      "groups": [
+        {
+          "start": 0,
+          "count": 53475,
+          "color": "#18212b"
+        },
+        {
+          "start": 53475,
+          "count": 16467,
+          "color": "#bbc5ce"
+        },
+        {
+          "start": 69942,
+          "count": 30705,
+          "color": "#168791"
+        }
+      ],
+      "originalTriangles": 236444,
+      "triangles": 33549,
+      "clusterCellMm": 0.16,
+      "shell": false
+    },
+    {
+      "name": "AHT20+BMP280-1",
+      "kind": "sensor",
+      "sourceFile": "fullbody - AHT20+BMP280-1.STL",
+      "positionOffset": 660000,
+      "vertexCount": 2239,
+      "indexOffset": 686868,
+      "indexCount": 13728,
+      "groups": [
+        {
+          "start": 0,
+          "count": 192,
+          "color": "#162330"
+        },
+        {
+          "start": 192,
+          "count": 13416,
+          "color": "#b4bec6"
+        },
+        {
+          "start": 13608,
+          "count": 120,
+          "color": "#227cbb"
+        }
+      ],
+      "originalTriangles": 20328,
+      "triangles": 4576,
+      "clusterCellMm": 0.12,
+      "shell": false
+    },
+    {
+      "name": "frame0-1",
+      "kind": "frame",
+      "sourceFile": "fullbody - frame0-1.STL",
+      "positionOffset": 741780,
+      "vertexCount": 512,
+      "indexOffset": 747924,
+      "indexCount": 3060,
+      "groups": [
+        {
+          "start": 0,
+          "count": 3060,
+          "color": "#71808d"
+        }
+      ],
+      "originalTriangles": 1020,
+      "triangles": 1020,
+      "clusterCellMm": 0.035,
+      "shell": true
+    },
+    {
+      "name": "frame1-1",
+      "kind": "frame",
+      "sourceFile": "fullbody - frame1-1.STL",
+      "positionOffset": 760164,
+      "vertexCount": 4470,
+      "indexOffset": 813804,
+      "indexCount": 26904,
+      "groups": [
+        {
+          "start": 0,
+          "count": 26904,
+          "color": "#71808d"
+        }
+      ],
+      "originalTriangles": 8976,
+      "triangles": 8968,
+      "clusterCellMm": 0.035,
+      "shell": false
+    },
+    {
+      "name": "frame2-1",
+      "kind": "frame",
+      "sourceFile": "fullbody - frame2-1.STL",
+      "positionOffset": 921420,
+      "vertexCount": 881,
+      "indexOffset": 931992,
+      "indexCount": 5370,
+      "groups": [
+        {
+          "start": 0,
+          "count": 5370,
+          "color": "#71808d"
+        }
+      ],
+      "originalTriangles": 1790,
+      "triangles": 1790,
+      "clusterCellMm": 0.035,
+      "shell": false
+    },
+    {
+      "name": "frame4_x2-1",
+      "kind": "frame",
+      "sourceFile": "fullbody - frame4_x2-1.STL",
+      "positionOffset": 953472,
+      "vertexCount": 173,
+      "indexOffset": 955548,
+      "indexCount": 1038,
+      "groups": [
+        {
+          "start": 0,
+          "count": 1038,
+          "color": "#71808d"
+        }
+      ],
+      "originalTriangles": 346,
+      "triangles": 346,
+      "clusterCellMm": 0.035,
+      "shell": true
+    },
+    {
+      "name": "frame4_x2-2",
+      "kind": "frame",
+      "sourceFile": "fullbody - frame4_x2-2.STL",
+      "positionOffset": 959700,
+      "vertexCount": 173,
+      "indexOffset": 961776,
+      "indexCount": 1038,
+      "groups": [
+        {
+          "start": 0,
+          "count": 1038,
+          "color": "#71808d"
+        }
+      ],
+      "originalTriangles": 346,
+      "triangles": 346,
+      "clusterCellMm": 0.035,
+      "shell": true
+    },
+    {
+      "name": "L298N.stp-1",
+      "kind": "driver",
+      "sourceFile": "fullbody - L298N.stp-1.STL",
+      "positionOffset": 965928,
+      "vertexCount": 17607,
+      "indexOffset": 1177212,
+      "indexCount": 106671,
+      "groups": [
+        {
+          "start": 0,
+          "count": 102711,
+          "color": "#293440"
+        },
+        {
+          "start": 102711,
+          "count": 3738,
+          "color": "#3b9473"
+        },
+        {
+          "start": 106449,
+          "count": 222,
+          "color": "#a8303b"
+        }
+      ],
+      "originalTriangles": 58097,
+      "triangles": 35557,
+      "clusterCellMm": 0.18,
+      "shell": false
+    },
+    {
+      "name": "L298N.stp-2",
+      "kind": "driver",
+      "sourceFile": "fullbody - L298N.stp-2.STL",
+      "positionOffset": 1603896,
+      "vertexCount": 15908,
+      "indexOffset": 1794792,
+      "indexCount": 95973,
+      "groups": [
+        {
+          "start": 0,
+          "count": 92556,
+          "color": "#293440"
+        },
+        {
+          "start": 92556,
+          "count": 3417,
+          "color": "#3b9473"
+        }
+      ],
+      "originalTriangles": 58097,
+      "triangles": 31991,
+      "clusterCellMm": 0.18,
+      "shell": false
+    },
+    {
+      "name": "LDR v1.step-1",
+      "kind": "light",
+      "sourceFile": "fullbody - LDR v1.step-1.STL",
+      "positionOffset": 2178684,
+      "vertexCount": 381,
+      "indexOffset": 2183256,
+      "indexCount": 2280,
+      "groups": [
+        {
+          "start": 0,
+          "count": 2280,
+          "color": "#d6ac65"
+        }
+      ],
+      "originalTriangles": 4544,
+      "triangles": 760,
+      "clusterCellMm": 0.1,
+      "shell": false
+    },
+    {
+      "name": "LDR v1.step-2",
+      "kind": "light",
+      "sourceFile": "fullbody - LDR v1.step-2.STL",
+      "positionOffset": 2192376,
+      "vertexCount": 387,
+      "indexOffset": 2197020,
+      "indexCount": 2310,
+      "groups": [
+        {
+          "start": 0,
+          "count": 2310,
+          "color": "#d6ac65"
+        }
+      ],
+      "originalTriangles": 4544,
+      "triangles": 770,
+      "clusterCellMm": 0.1,
+      "shell": false
+    },
+    {
+      "name": "LDR v1.step-3",
+      "kind": "light",
+      "sourceFile": "fullbody - LDR v1.step-3.STL",
+      "positionOffset": 2206260,
+      "vertexCount": 381,
+      "indexOffset": 2210832,
+      "indexCount": 2274,
+      "groups": [
+        {
+          "start": 0,
+          "count": 2274,
+          "color": "#d6ac65"
+        }
+      ],
+      "originalTriangles": 4544,
+      "triangles": 758,
+      "clusterCellMm": 0.1,
+      "shell": false
+    },
+    {
+      "name": "LDR v1.step-4",
+      "kind": "light",
+      "sourceFile": "fullbody - LDR v1.step-4.STL",
+      "positionOffset": 2219928,
+      "vertexCount": 383,
+      "indexOffset": 2224524,
+      "indexCount": 2292,
+      "groups": [
+        {
+          "start": 0,
+          "count": 2292,
+          "color": "#d6ac65"
+        }
+      ],
+      "originalTriangles": 4544,
+      "triangles": 764,
+      "clusterCellMm": 0.1,
+      "shell": false
+    },
+    {
+      "name": "motor-1",
+      "kind": "motor",
+      "sourceFile": "fullbody - motor-1.STL",
+      "positionOffset": 2233692,
+      "vertexCount": 277,
+      "indexOffset": 2237016,
+      "indexCount": 1650,
+      "groups": [
+        {
+          "start": 0,
+          "count": 1650,
+          "color": "#83919c"
+        }
+      ],
+      "originalTriangles": 550,
+      "triangles": 550,
+      "clusterCellMm": 0.035,
+      "shell": false
+    },
+    {
+      "name": "motor-2",
+      "kind": "motor",
+      "sourceFile": "fullbody - motor-2.STL",
+      "positionOffset": 2243616,
+      "vertexCount": 277,
+      "indexOffset": 2246940,
+      "indexCount": 1650,
+      "groups": [
+        {
+          "start": 0,
+          "count": 1650,
+          "color": "#83919c"
+        }
+      ],
+      "originalTriangles": 550,
+      "triangles": 550,
+      "clusterCellMm": 0.035,
+      "shell": false
+    },
+    {
+      "name": "motor-3",
+      "kind": "motor",
+      "sourceFile": "fullbody - motor-3.STL",
+      "positionOffset": 2253540,
+      "vertexCount": 277,
+      "indexOffset": 2256864,
+      "indexCount": 1650,
+      "groups": [
+        {
+          "start": 0,
+          "count": 1650,
+          "color": "#83919c"
+        }
+      ],
+      "originalTriangles": 550,
+      "triangles": 550,
+      "clusterCellMm": 0.035,
+      "shell": false
+    },
+    {
+      "name": "PhotoelectricEncoder_HC020K-1",
+      "kind": "encoder",
+      "sourceFile": "fullbody - PhotoelectricEncoder_HC020K-1.STL",
+      "positionOffset": 2263464,
+      "vertexCount": 1504,
+      "indexOffset": 2281512,
+      "indexCount": 9639,
+      "groups": [
+        {
+          "start": 0,
+          "count": 9639,
+          "color": "#192e41"
+        }
+      ],
+      "originalTriangles": 3774,
+      "triangles": 3213,
+      "clusterCellMm": 0.1,
+      "shell": false
+    },
+    {
+      "name": "Prototype PCB 50x70mm.step-1 L_X_F6tpad Oval.step-1",
+      "kind": "pads",
+      "sourceFile": "fullbody - Prototype PCB 50x70mm.step-1 L_X_F6tpad Oval.step-1.STL",
+      "positionOffset": 2320068,
+      "vertexCount": 2478,
+      "indexOffset": 2349804,
+      "indexCount": 13407,
+      "groups": [
+        {
+          "start": 0,
+          "count": 13407,
+          "color": "#b99a59"
+        }
+      ],
+      "originalTriangles": 13568,
+      "triangles": 4469,
+      "clusterCellMm": 0.3,
+      "shell": false
+    },
+    {
+      "name": "Prototype PCB 50x70mm.step-1 L_X_F6tpad rund.step-1",
+      "kind": "pads",
+      "sourceFile": "fullbody - Prototype PCB 50x70mm.step-1 L_X_F6tpad rund.step-1.STL",
+      "positionOffset": 2403432,
+      "vertexCount": 44499,
+      "indexOffset": 2937420,
+      "indexCount": 226086,
+      "groups": [
+        {
+          "start": 0,
+          "count": 226086,
+          "color": "#b99a59"
+        }
+      ],
+      "originalTriangles": 352512,
+      "triangles": 75362,
+      "clusterCellMm": 0.3,
+      "shell": false
+    },
+    {
+      "name": "Prototype PCB 50x70mm.step-1 PCB.step-1",
+      "kind": "pcb",
+      "sourceFile": "fullbody - Prototype PCB 50x70mm.step-1 PCB.step-1.STL",
+      "positionOffset": 3841764,
+      "vertexCount": 14009,
+      "indexOffset": 4009872,
+      "indexCount": 88767,
+      "groups": [
+        {
+          "start": 0,
+          "count": 88767,
+          "color": "#126c75"
+        }
+      ],
+      "originalTriangles": 73248,
+      "triangles": 29589,
+      "clusterCellMm": 0.2,
+      "shell": false
+    },
+    {
+      "name": "RASPBERRY PI 3 MODEL B---3DModel-STEP-56544-1",
+      "kind": "pi",
+      "sourceFile": "fullbody - RASPBERRY PI 3 MODEL B---3DModel-STEP-56544-1.STL",
+      "positionOffset": 4364940,
+      "vertexCount": 13967,
+      "indexOffset": 4532544,
+      "indexCount": 85707,
+      "groups": [
+        {
+          "start": 0,
+          "count": 23268,
+          "color": "#25885b"
+        },
+        {
+          "start": 23268,
+          "count": 14586,
+          "color": "#bfa565"
+        },
+        {
+          "start": 37854,
+          "count": 29730,
+          "color": "#1c2730"
+        },
+        {
+          "start": 67584,
+          "count": 18123,
+          "color": "#aeb9c1"
+        }
+      ],
+      "originalTriangles": 62406,
+      "triangles": 28569,
+      "clusterCellMm": 0.18,
+      "shell": false
+    },
+    {
+      "name": "wheel-1",
+      "kind": "wheel",
+      "sourceFile": "fullbody - wheel-1.STL",
+      "positionOffset": 4875372,
+      "vertexCount": 3697,
+      "indexOffset": 4919736,
+      "indexCount": 22614,
+      "groups": [
+        {
+          "start": 0,
+          "count": 22614,
+          "color": "#ced6dc"
+        }
+      ],
+      "originalTriangles": 7538,
+      "triangles": 7538,
+      "clusterCellMm": 0.035,
+      "shell": false
+    },
+    {
+      "name": "wheel-2",
+      "kind": "wheel",
+      "sourceFile": "fullbody - wheel-2.STL",
+      "positionOffset": 5010192,
+      "vertexCount": 3697,
+      "indexOffset": 5054556,
+      "indexCount": 22614,
+      "groups": [
+        {
+          "start": 0,
+          "count": 22614,
+          "color": "#ced6dc"
+        }
+      ],
+      "originalTriangles": 7538,
+      "triangles": 7538,
+      "clusterCellMm": 0.035,
+      "shell": false
+    },
+    {
+      "name": "wheel-3",
+      "kind": "wheel",
+      "sourceFile": "fullbody - wheel-3.STL",
+      "positionOffset": 5145012,
+      "vertexCount": 3697,
+      "indexOffset": 5189376,
+      "indexCount": 22614,
+      "groups": [
+        {
+          "start": 0,
+          "count": 22614,
+          "color": "#ced6dc"
+        }
+      ],
+      "originalTriangles": 7538,
+      "triangles": 7538,
+      "clusterCellMm": 0.035,
+      "shell": false
+    }
+  ],
+  "originalTriangles": 933392,
+  "triangles": 286661,
+  "binaryBytes": 5279832,
+  "binarySHA256": "9afd628da180b6f53a465a316badd00d0df5c0a3b690366df6ad8508e31eb4ed"
+}

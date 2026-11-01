@@ -1,0 +1,16 @@
+# Generated CubeIDE output and local settings
+**/Debug/
+**/Release/
+**/.metadata/
+**/.settings/
+**/EWARM/
+**/__pycache__/
+*.pyc
+*.exe
+*.o
+*.d
+*.su
+*.cyclo
+*.log
+*.bak
+tests/adcs-source-generated.c
