@@ -1,5 +1,7 @@
 # CubeSat ADCS — STM32F405RGT6
 
+**Bản hiện tại: `MANUAL_PID_V1`** — PID ON/OFF theo yêu cầu người dùng, phục hồi/calib không tự xóa ON; UI tách trạng thái PID và đầu ra bị chặn. Xem [chi tiết sửa PID](docs/PID-OPERATOR-CONTROL-20261101.md). Thư mục [radio](radio/README.md) bổ sung cầu nạp STM32 qua S3 → ESP-NOW → C3 → UART; phải cài cầu USB lần đầu trước khi nạp STM32 không dây.
+
 Bản khôi phục ngày **2026-11-01**, trước đợt thử Yaw/PWM và chuyển sang cascade PID. Khôi phục EKF và PID tư thế trực tiếp xuất PWM, cùng viewer tương ứng. **Kp 28 / Ki 2.4 / Kd 8** cho Roll/Pitch/Yaw là gain lịch sử của bản được khôi phục, chưa phải gain đã nhận dạng/tuning hoàn tất.
 
 ## Nội dung
@@ -7,7 +9,7 @@ Bản khôi phục ngày **2026-11-01**, trước đợt thử Yaw/PWM và chuy�
 - `firmware/`: project STM32CubeIDE, HAL/CMSIS/USB middleware, `.ioc`, linker dành riêng sector 11 cho calib.
 - `viewer/`: giao diện telemetry/điều khiển, mô hình CAD 3D, Three.js cục bộ và giấy phép đi kèm.
 - `tests/`, `tools/`: regression test thuật toán thực, UART DMA, protocol, bộ nhớ calib và viewer.
-- `artifacts/stable-debug/`: ELF Debug đã build, map và manifest SHA-256 để đối chiếu đúng bản.
+- `artifacts/stable-debug/`: mốc rollback cũ; `artifacts/manual-pid/`: bản PID mới. Mỗi bản có ELF/map/manifest SHA-256 riêng.
 - [Chi tiết khôi phục, kiểm thử và bảng nối chân](docs/STABLE-RESTORE-20261101.md).
 
 ## Phần cứng và điều khiển
@@ -16,7 +18,7 @@ STM32F405RGT6, HSE 8 MHz / CPU 168 MHz; ba motor DC chổi than qua hai L298N; e
 
 Chu kỳ tư thế/PID 5 ms; encoder 50 ms. Encoder của bản này phục vụ đo RPM, giới hạn quá tốc và bảo vệ mất xung. **Không có vòng RPM cascade đang hoạt động**, không coi encoder bánh đà là cảm biến góc thân và không coi dấu PWM là chiều quay đo được.
 
-Luồng telemetry: STM32 USART1 **PA9 TX → C3 GPIO20 RX**, **PA10 RX ← C3 GPIO21 TX**, GND chung, 3.3 V, 115200 8N1 → ESP-NOW → S3 → USB. Chỉ nối một UART C3. Firmware C3/S3 không nằm trong snapshot STM32 này.
+Luồng telemetry: STM32 USART1 **PA9 TX → C3 GPIO20 RX**, **PA10 RX ← C3 GPIO21 TX**, GND chung, 3.3 V, 115200 8N1 → ESP-NOW → S3 → USB. Chỉ nối một UART C3. Source cầu C3/S3 mới nằm trong `radio/`; cần cài qua USB một lần.
 
 Boot mặc định PID tắt/PWM 0. Không có autotune hoặc MOTOR_TEST trong bản khôi phục. Camera/GPS chưa có driver phần cứng, được báo chưa cấu hình.
 
@@ -63,6 +65,6 @@ Bộ đọc calib có ngoại lệ tương thích v2 đường chéo để giữ
 
 ## Phạm vi xác minh
 
-Build Debug không warning/error và regression test phần mềm đã qua. **Snapshot này chưa được xác nhận lại trên motor/gá thực sau rollback.** Không kết luận hệ ADCS ổn định chỉ từ build/telemetry. Giữ PID tắt sau nạp, kiểm tra dữ liệu đo rồi thử từng trục theo gá thực tế.
+Build Debug không warning/error và regression test phần mềm đã qua. **Bản sửa PID chưa được nạp/kiểm tra lại trên motor/gá thực; mốc rollback trước đó đã được nạp DFU và verify, xem manifest riêng của từng bản.** Không kết luận hệ ADCS ổn định chỉ từ build/telemetry. Giữ PID tắt sau nạp, kiểm tra dữ liệu đo rồi thử từng trục theo gá thực tế.
 
 Mã HAL/CMSIS/USB và Three.js giữ thông báo bản quyền/giấy phép của từng bên trong thư mục tương ứng; không gán lại giấy phép cho mã của bên thứ ba.

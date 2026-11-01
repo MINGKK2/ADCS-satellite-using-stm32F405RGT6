@@ -14,3 +14,7 @@
 *.log
 *.bak
 tests/adcs-source-generated.c
+
+radio/build-*/
+radio/wireless-deployment/
+radio/tests/__pycache__/

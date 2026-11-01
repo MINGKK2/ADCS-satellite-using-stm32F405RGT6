@@ -79,3 +79,11 @@ vm.runInContext('feedSerialText("SLOW=1 T_ms=400 SENSOR_ERR=0x00 ATT_MODE=9DOF M
 assert(elements.get('magState').textContent.includes('Đang hiệu chỉnh'));
 assert.equal(elements.get('yaw').textContent,'90.00°');
 console.log('PASS: optional compass warning, valid IMU/PID retained, rejection reason, persistent calibration status');
+vm.runInContext('feedSerialText("SEQ=3 T_ms=500 R=0 P=0 Y=90000 PID=0,0,1 PID_ACTIVE=0,0,0 PID_BLOCK3=0,0,16 ATT_VALID=1\\r\\n")',ctx);
+assert(elements.get('pidYaw').checked);
+assert(elements.get('dbgYawSafety').textContent.includes('PID ON'));
+assert(elements.get('dbgYawSafety').textContent.includes('fault encoder'));
+vm.runInContext('feedSerialText("SEQ=4 T_ms=550 R=0 P=0 Y=90000 PID=0,0,1 PID_ACTIVE=0,0,1 PID_BLOCK3=0,0,0 ATT_VALID=1\\r\\n")',ctx);
+assert.equal(elements.get('dbgYawSafety').textContent,'PID ON · đang điều khiển');
+assert.equal(elements.get('yaw').textContent,'90.00°');
+console.log('PASS operator PID ON remains checked during blocked output and resumes without a new ON command');

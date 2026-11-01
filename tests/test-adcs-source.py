@@ -42,6 +42,11 @@ globals='''
 static AttitudeEkf_t attitude_ekf;
 static WheelEncoder_t wheel_encoder[3];
 static Magnetometer_t magnetometer;
+static uint8_t control_targets_initialized;
+static uint8_t control_timing_paused;
+static uint32_t control_pause_until_ms;
+static AxisControl_t roll_control,pitch_control,yaw_control;
+static WheelSpeedControl_t wheel_speed_control[3];
 static uint8_t emergency_stop,magnetic_heading_quality;
 static uint8_t pid_enabled[3];
 static HAL_StatusTypeDef fusion_status;
@@ -53,13 +58,13 @@ static float mag_field_ratio,mag_innovation_deg;
 static float accel_offset_raw[3]={ACCEL_OFFSET_X_RAW_DEFAULT,ACCEL_OFFSET_Y_RAW_DEFAULT,ACCEL_OFFSET_Z_RAW_DEFAULT};
 static float accel_scale[3]={ACCEL_SCALE_X_DEFAULT,ACCEL_SCALE_Y_DEFAULT,ACCEL_SCALE_Z_DEFAULT};
 '''
-names=['ClampFloat','WrapAngle180','SensorToBodyAccel','SensorToBodyGyroRad',
+names=['ControlTiming_Accept','ClampFloat','WrapAngle180','SensorToBodyAccel','SensorToBodyGyroRad',
        'QuaternionNormalize','QuaternionToEuler','Matrix3Inverse','AttitudeEKF_Init',
        'AttitudeEKF_PropagateCovariance','AttitudeEKF_AccelerometerUpdate',
        'RotateWorldToBody','RotateBodyToWorld','GY511_MagToBody','AttitudeEKF_ObserveInitialMagReference',
        'AttitudeEKF_MagnetometerUpdate','AttitudeEKF_RefreshEuler','Magnetometer_ProcessSample','AttitudeEKF_Update',
-       'AxisControl_Update','WheelEncoder_UpdateOne','Motor_ApplySupervisedCommand','GY511_MagCalibrate']
-program=prefix+defines+'\n'+''.join(structure(n)+'\n' for n in ['AttitudeEkf_t','AxisControl_t','WheelEncoder_t','Magnetometer_t'])+globals+'\n'.join(function(n) for n in names)
+       'AttitudeControl_Reset','AttitudeControl_HoldCurrentYaw','AxisControl_Update','WheelEncoder_UpdateOne','Motor_ApplySupervisedCommand','GY511_MagCalibrate']
+program=prefix+defines+'\n'+''.join(structure(n)+'\n' for n in ['AttitudeEkf_t','AxisControl_t','WheelEncoder_t','Magnetometer_t','WheelSpeedControl_t'])+globals+'\n'.join(function(n) for n in names)
 program+='\n'+(here/'test-adcs-cases.c').read_text()
 generated=here/'adcs-source-generated.c';generated.write_text(program)
 compiler=os.environ.get('ADCS_HOST_CC') or shutil.which('gcc') or r'C:\msys64\ucrt64\bin\gcc.exe'

@@ -19,15 +19,15 @@ void TelemetryProtocol_Service(const TelemetryData *s) {
   if((uint32_t)(s->uptime_ms-fast_tick)>=50U) {
     fast_tick=s->uptime_ms;
     int n=snprintf(line,sizeof(line),
-      "SEQ=%lu T_ms=%lu R=%ld P=%ld Y=%ld TARGET_mdeg=%ld,%ld,%ld G_mdps=%ld,%ld,%ld YR=%ld PIDOUT3=%ld,%ld,%ld REQPWM3=%ld,%ld,%ld PWM3=%ld,%ld,%ld ERPM3_m=%ld,%ld,%ld PID=%u,%u,%u MODE=%s ESTOP=%u ATT_VALID=%u BERR_mdeg=%ld,%ld,%ld IMU_AGE_ms=%lu\r\n",
+      "SEQ=%lu T_ms=%lu R=%ld P=%ld Y=%ld TARGET_mdeg=%ld,%ld,%ld G_mdps=%ld,%ld,%ld YR=%ld PIDOUT3=%ld,%ld,%ld REQPWM3=%ld,%ld,%ld PWM3=%ld,%ld,%ld ERPM3_m=%ld,%ld,%ld PID=%u,%u,%u MODE=%s ESTOP=%u ATT_VALID=%u BERR_mdeg=%ld,%ld,%ld IMU_AGE_ms=%lu PID_ACTIVE=%u,%u,%u PID_BLOCK3=%u,%u,%u PID_OWNER=OPERATOR\r\n",
       (unsigned long)++sequence,(unsigned long)s->uptime_ms,V(angle),V(target),V(gyro),(long)s->yaw_rate,
-      V(pid_output),V(requested_pwm),V(pwm),V(rpm_milli),B(pid),s->charging?"CHARGING":"WORKING",s->estop,s->attitude_valid,V(body_error),(unsigned long)s->imu_age_ms);
+      V(pid_output),V(requested_pwm),V(pwm),V(rpm_milli),B(pid),s->charging?"CHARGING":"WORKING",s->estop,s->attitude_valid,V(body_error),(unsigned long)s->imu_age_ms,B(pid_active),B(pid_block));
     send(n,0);
   }
   if((uint32_t)(s->uptime_ms-slow_tick)>=500U) {
     slow_tick=s->uptime_ms;
     int n=snprintf(line,sizeof(line),
-      "SLOW=1 T_ms=%lu WHO=0x%02X A_mg=%ld,%ld,%ld M=%ld,%ld,%ld MRJ=%lu MGR=%lu,%lu AGR=%lu,%lu Q_u6=%ld,%ld,%ld,%ld BMP_TcC=%ld PPa=%lu ALT_mm=%ld INA_VmV=%ld INA_ImA10=%ld INA_PmW=%ld BAT_pct=%ld AHT_TmC=%ld RHmPct=%lu SV=0x%02X DT_us=%lu STILL=%u YAW_MAG_AGE_ms=%lu MAG_QUALITY=%u FUSION=%u SENSOR_ERR=0x%02lX CAMERA=NOT_CONFIGURED GPS_FIX=0 GPS_LAT_e7=0 GPS_LON_e7=0 GPS_SATS=0 CTRL=%s HOLD=FIXED_PID\r\n",
+      "SLOW=1 T_ms=%lu WHO=0x%02X A_mg=%ld,%ld,%ld M=%ld,%ld,%ld MRJ=%lu MGR=%lu,%lu AGR=%lu,%lu Q_u6=%ld,%ld,%ld,%ld BMP_TcC=%ld PPa=%lu ALT_mm=%ld INA_VmV=%ld INA_ImA10=%ld INA_PmW=%ld BAT_pct=%ld AHT_TmC=%ld RHmPct=%lu SV=0x%02X DT_us=%lu STILL=%u YAW_MAG_AGE_ms=%lu MAG_QUALITY=%u FUSION=%u SENSOR_ERR=0x%02lX CAMERA=NOT_CONFIGURED GPS_FIX=0 GPS_LAT_e7=0 GPS_LON_e7=0 GPS_SATS=0 CTRL=%s HOLD=FIXED_PID FW=MANUAL_PID_V1\r\n",
       (unsigned long)s->uptime_ms,s->who,V(accel),V(mag),(unsigned long)s->mag_rejected,
       (unsigned long)s->mag_accepted,(unsigned long)s->mag_rejected,(unsigned long)s->accel_accepted,(unsigned long)s->accel_rejected,
       (long)s->quaternion[0],(long)s->quaternion[1],(long)s->quaternion[2],(long)s->quaternion[3],

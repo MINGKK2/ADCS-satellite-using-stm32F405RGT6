@@ -1,0 +1,8 @@
+{
+  "s3_compiled": true,
+  "s3_usb_flashed_verified": true,
+  "s3_host_parser_hardware_confirmed": true,
+  "c3_compiled": true,
+  "c3_usb_flashed": false,
+  "end_to_end_wireless_flash_tested": false
+}

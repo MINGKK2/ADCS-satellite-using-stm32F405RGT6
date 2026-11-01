@@ -9,7 +9,7 @@ static void test_geometry(void){
   assert(ADCS_AttitudeError(q,t,e));assert(fabsf(e[0])<.001f&&fabsf(e[1]-10)<.001f&&fabsf(e[2])<.001f);
   q[0]=NAN;assert(!ADCS_AttitudeError(q,t,e));
   fusion_status=HAL_OK;pid_enabled[2]=1;QuaternionNormalize(q);
-  assert(fusion_status==HAL_ERROR && !pid_enabled[2] && isfinite(q[0]));
+  assert(fusion_status==HAL_ERROR && pid_enabled[2] && isfinite(q[0]));
   puts("PASS quaternion shortest path, q/-q, mixed axes, invalid quaternion");
 }
 static void test_pid(void){
@@ -110,4 +110,31 @@ static void test_compass_dropout(void){
   assert(fabsf(attitude_ekf.yaw_deg-45)<.1f && control.setpoint_deg==45);
   puts("PASS actual 6s compass I2C dropout, rejected norm/heading and recovery: PID stays enabled, IMU runs, angle/target retained");
 }
-int main(void){test_geometry();test_pid();test_encoder();test_accel_covariance();test_fusion();test_compass_dropout();}
+static void test_operator_authority(void){
+  control_targets_initialized=1;pid_enabled[0]=1;pid_enabled[1]=0;pid_enabled[2]=1;
+  roll_control.setpoint_deg=10;pitch_control.setpoint_deg=20;yaw_control.setpoint_deg=90;
+  attitude_ekf.yaw_deg=45;attitude_ekf.roll_deg=0;attitude_ekf.pitch_deg=0;
+  AttitudeControl_Reset();
+  assert(pid_enabled[0]&&!pid_enabled[1]&&pid_enabled[2]);
+  assert(roll_control.setpoint_deg==10&&pitch_control.setpoint_deg==20&&yaw_control.setpoint_deg==90);
+  float bias[3]={0},accel[3]={0,0,16384};AttitudeEKF_Init(bias,accel);
+  assert(fabsf(attitude_ekf.yaw_deg-45)<.001f);
+  AttitudeControl_Reset();assert(pid_enabled[2]&&yaw_control.setpoint_deg==90);
+  float measured_before[4];memcpy(measured_before,attitude_ekf.q,sizeof(measured_before));
+  AttitudeControl_HoldCurrentYaw();
+  assert(fabsf(yaw_control.setpoint_deg-45)<.001f && pid_enabled[2]);
+  assert(!memcmp(measured_before,attitude_ekf.q,sizeof(measured_before)));
+  puts("PASS operator PID latch/targets survive controller and EKF recovery; retained yaw is measured 45deg, not target 90deg");
+  control_timing_paused=0;
+  assert(ControlTiming_Accept(5,0)&&!control_timing_paused);
+  assert(ControlTiming_Accept(25,100)&&control_timing_paused);
+  assert(ControlTiming_Accept(5,199)&&control_timing_paused);
+  assert(ControlTiming_Accept(5,200)&&!control_timing_paused);
+  assert(!ControlTiming_Accept(101,250)&&control_timing_paused&&pid_enabled[2]);
+  control_timing_paused=0;
+  assert(ControlTiming_Accept(25,0xFFFFFFF0U)&&control_timing_paused);
+  assert(ControlTiming_Accept(5,83)&&control_timing_paused);
+  assert(ControlTiming_Accept(5,84)&&!control_timing_paused&&pid_enabled[2]);
+  puts("PASS timing pause/recovery and tick wrap: 25ms does not reinitialize EKF, >100ms requests recovery but never clears operator PID");
+}
+int main(void){test_geometry();test_pid();test_encoder();test_accel_covariance();test_fusion();test_compass_dropout();test_operator_authority();}

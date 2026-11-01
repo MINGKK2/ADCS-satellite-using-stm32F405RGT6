@@ -420,7 +420,11 @@ static float pending_wheel_rpm[MOTOR_AXIS_COUNT] = {0.0f, 0.0f, 0.0f};
 static float pending_wheel_pid_gain[3] = {0.0f, 0.0f, 0.0f};
 static float pending_rpm_limit[MOTOR_AXIS_COUNT] = {0.0f, 0.0f, 0.0f};
 /* Explicit arm after reset/calibration/recovery; never start a wheel at boot. */
+/* Operator request latch. Only PID commands/explicit ESTOP may change it. */
 static uint8_t pid_enabled[MOTOR_AXIS_COUNT] = {0U, 0U, 0U};
+static uint8_t control_targets_initialized=0U;
+static uint32_t control_pause_until_ms=0U;
+static uint8_t control_timing_paused=0U;
 static uint8_t pending_pid_axis = MOTOR_AXIS_COUNT;
 static uint8_t pending_wheel_axis = MOTOR_AXIS_COUNT;
 static uint8_t pending_pid_enable = 0U;
@@ -481,7 +485,9 @@ static void Calibration_Save(uint32_t measured_flags)
 {
   calibration_measured_flags |= measured_flags;
   /* Never program internal flash while a wheel is enabled. */
-  for(unsigned i=0;i<3;i++)if(pid_enabled[i] || motor_command[i])return;
+  /* A retained ON request is not an energized motor. Calibration routines
+     suspend all motor outputs before saving, without changing that request. */
+  for(unsigned i=0;i<3;i++)if(motor_command[i] || requested_motor_command[i])return;
   CalibrationData data;memset(&data,0,sizeof(data));data.layout_tag=CALIBRATION_LAYOUT_TAG;
   data.flags=CALIBRATION_ACCEL|CALIBRATION_MAG|(calibration_gyro_valid?CALIBRATION_GYRO:0U);
   data.measured_flags=calibration_measured_flags;data.mpu_who=mpu_who_am_i;data.mag_type=(uint32_t)gy511_mag_type;
@@ -494,6 +500,13 @@ static void Calibration_Save(uint32_t measured_flags)
       calibration_save_result==CAL_STORE_OK?"DONE":"WARN",calibration_save_result,calibration_from_flash?"FLASH":"RAM",
       (unsigned long)calibration_measured_flags);
   TelemetryProtocol_Event((const uint8_t *)message,(size_t)n);
+}
+
+static uint8_t ControlTiming_Accept(uint32_t elapsed_ms,uint32_t now)
+{
+  if(control_timing_paused && (int32_t)(now-control_pause_until_ms)>=0)control_timing_paused=0U;
+  if(elapsed_ms>20U){control_pause_until_ms=now+100U;control_timing_paused=1U;}
+  return elapsed_ms<=100U;
 }
 
 static float ClampFloat(float value, float minimum, float maximum)
@@ -1937,7 +1950,7 @@ static HAL_StatusTypeDef Sensor_Calibrate(
 
 static void AccelSixPoint_Start(void)
 {
-  for(unsigned axis=0;axis<MOTOR_AXIS_COUNT;axis++)pid_enabled[axis]=0U;
+  /* Keep the operator PID request across calibration, faults and recovery. */
   memset(&accel_calibration, 0, sizeof(accel_calibration));
   accel_calibration.active = 1U;
   Motors_StopAll();
@@ -2153,7 +2166,7 @@ static void QuaternionNormalize(float q[4])
   if (!isfinite(norm) || norm < 1.0e-9f)
   {
     fusion_status=HAL_ERROR;
-    for(unsigned axis=0;axis<MOTOR_AXIS_COUNT;axis++)pid_enabled[axis]=0U;
+    /* Keep the operator PID request across calibration, faults and recovery. */
     Motors_StopAll();
     q[0] = 1.0f;
     q[1] = 0.0f;
@@ -2240,6 +2253,8 @@ static void AttitudeEKF_Init(
     const float gyro_bias_rad_s[3],
     const float accel_average_raw[3])
 {
+  float retained_yaw=(control_targets_initialized && isfinite(attitude_ekf.yaw_deg))
+      ? attitude_ekf.yaw_deg*DEG_TO_RAD : 0.0f;
   memset(&attitude_ekf, 0, sizeof(attitude_ekf));
   last_heading_update_ms=0U;
   clean_heading_samples=0U;
@@ -2263,6 +2278,11 @@ static void AttitudeEKF_Init(
   attitude_ekf.q[1] = sr * cp;
   attitude_ekf.q[2] = cr * sp;
   attitude_ekf.q[3] = -sr * sp;
+  /* Retain the last measured heading, never a target-derived heading. */
+  float cy=cosf(0.5f*retained_yaw),sy=sinf(0.5f*retained_yaw);
+  float q0=attitude_ekf.q[0],q1=attitude_ekf.q[1],q2=attitude_ekf.q[2],q3=attitude_ekf.q[3];
+  attitude_ekf.q[0]=cy*q0-sy*q3;attitude_ekf.q[1]=cy*q1-sy*q2;
+  attitude_ekf.q[2]=cy*q2+sy*q1;attitude_ekf.q[3]=cy*q3+sy*q0;
   QuaternionNormalize(attitude_ekf.q);
 
   for (uint32_t i = 0; i < 3U; i++)
@@ -3020,7 +3040,7 @@ static void AttitudeControl_Reset(void)
   /* Controller state follows the estimator; it never overwrites estimator
      output.  Measured attitude and target attitude are separate states. */
   roll_control.angle_deg = attitude_ekf.roll_deg;
-  roll_control.setpoint_deg = attitude_ekf.roll_deg;
+  if(!control_targets_initialized)roll_control.setpoint_deg = attitude_ekf.roll_deg;
   roll_control.integral = 0.0f;
   roll_control.rate_dps = 0.0f;
   roll_control.error_deg = 0.0f;
@@ -3031,7 +3051,7 @@ static void AttitudeControl_Reset(void)
   roll_control.saturated = 0U;
 
   pitch_control.angle_deg = attitude_ekf.pitch_deg;
-  pitch_control.setpoint_deg = attitude_ekf.pitch_deg;
+  if(!control_targets_initialized)pitch_control.setpoint_deg = attitude_ekf.pitch_deg;
   pitch_control.integral = 0.0f;
   pitch_control.rate_dps = 0.0f;
   pitch_control.error_deg = 0.0f;
@@ -3042,7 +3062,7 @@ static void AttitudeControl_Reset(void)
   pitch_control.saturated = 0U;
 
   yaw_control.angle_deg = attitude_ekf.yaw_deg;
-  yaw_control.setpoint_deg = attitude_ekf.yaw_deg;
+  if(!control_targets_initialized)yaw_control.setpoint_deg = attitude_ekf.yaw_deg;
   yaw_control.integral = 0.0f;
   yaw_control.rate_dps = 0.0f;
   yaw_control.error_deg = 0.0f;
@@ -3057,8 +3077,16 @@ static void AttitudeControl_Reset(void)
     wheel_speed_control[axis].previous_feedback_rpm = 0.0f;
     wheel_speed_control[axis].output_pwm = 0.0f;
   }
+  control_targets_initialized=1U;
   Motors_StopAll();
-  for(unsigned axis=0;axis<MOTOR_AXIS_COUNT;axis++)pid_enabled[axis]=0U;
+  /* Keep the operator PID request across calibration, faults and recovery. */
+}
+
+static void AttitudeControl_HoldCurrentYaw(void)
+{
+  yaw_control.setpoint_deg=attitude_ekf.yaw_deg;
+  yaw_control.integral=0.0f;
+  control_targets_initialized=1U;
 }
 
 static int32_t AxisControl_Update(
@@ -3186,7 +3214,7 @@ static HAL_StatusTypeDef Fusion_RestartAfterStationaryCalibration(
     float accel_average_raw[3])
 {
   Motors_StopAll();
-  for(unsigned axis=0;axis<MOTOR_AXIS_COUNT;axis++)pid_enabled[axis]=0U;
+  /* Keep the operator PID request across calibration, faults and recovery. */
   if (Sensor_Calibrate(gyro_bias_rad_s, accel_average_raw) != HAL_OK)
   {
     return HAL_ERROR;
@@ -3194,7 +3222,7 @@ static HAL_StatusTypeDef Fusion_RestartAfterStationaryCalibration(
 
   AttitudeEKF_Init(gyro_bias_rad_s, accel_average_raw);
   App_Wait(30);
-  if (mag_status!=HAL_OK || AttitudeEKF_SetMagneticReference() != HAL_OK)
+  if (mag_status!=HAL_OK || (!magnetometer.reference_valid && AttitudeEKF_SetMagneticReference() != HAL_OK))
   {
     static uint8_t error_message[] =
         "CAL WARN TYPE=FUSION REASON=MAG_UNAVAILABLE CONTINUE=GYRO_ACCEL\r\n";
@@ -3227,7 +3255,7 @@ static HAL_StatusTypeDef Fusion_StartWithStoredCalibration(void)
   if(samples<16U)return HAL_ERROR;
   for(unsigned i=0;i<3;i++)sum[i]/=(float)samples;
   AttitudeEKF_Init(calibration_gyro_bias,sum);
-  if(mag_status==HAL_OK)(void)AttitudeEKF_SetMagneticReference();
+  if(mag_status==HAL_OK && !magnetometer.reference_valid)(void)AttitudeEKF_SetMagneticReference();
   AttitudeControl_Reset();
   const uint8_t ready[]="CAL STATUS TYPE=FUSION PHASE=READY CALIBRATION=STORED\r\n";
   TelemetryProtocol_Event(ready,sizeof(ready)-1U);
@@ -3484,6 +3512,7 @@ int main(void)
 	    }
 	    else if (usb_command == USB_COMMAND_SET_ATTITUDE)
 	    {
+	      control_targets_initialized=1U;
 	      roll_control.setpoint_deg = WrapAngle180(
 	          pending_setpoint_deg[MOTOR_AXIS_ROLL]);
 	      pitch_control.setpoint_deg = ClampFloat(
@@ -3504,15 +3533,9 @@ int main(void)
 	    }
 	    else if (usb_command == USB_COMMAND_PID)
 	    {
-	      uint8_t arm_ok=1U;
-	      if(pending_pid_enable) {
-	        if(emergency_stop || mpu_status!=HAL_OK || fusion_status!=HAL_OK
-	            || accel_calibration.active || !last_imu_sample_ms || HAL_GetTick()-last_imu_sample_ms>20U)arm_ok=0U;
-	        for(unsigned axis=0;axis<MOTOR_AXIS_COUNT;axis++)if((pending_pid_axis==axis || pending_pid_axis==MOTOR_AXIS_COUNT)
-	            && wheel_encoder[axis].no_pulse_fault)arm_ok=0U;
-	      }
+	      uint8_t arm_ok=!(pending_pid_enable && emergency_stop);
 	      if(!arm_ok) {
-	        const uint8_t error[]="NACK CMD=PID REASON=ESTOP_SENSOR_OR_ENCODER_NOT_READY\r\n";
+	        const uint8_t error[]="NACK CMD=PID REASON=ESTOP_ACTIVE\r\n";
 	        TelemetryProtocol_Event(error,sizeof(error)-1U);
 	      } else {
 	      if (pending_pid_axis == MOTOR_AXIS_COUNT)
@@ -3534,7 +3557,7 @@ int main(void)
 	      int length = snprintf(
 	          message,
 	          sizeof(message),
-	          "ACK CMD=PID ENABLE=%u STATE=%u,%u,%u\r\n",
+	          "ACK CMD=PID ENABLE=%u STATE=%u,%u,%u AUTHORITY=OPERATOR\r\n",
 	          pending_pid_enable,
 	          pid_enabled[MOTOR_AXIS_ROLL],
 	          pid_enabled[MOTOR_AXIS_PITCH],
@@ -3564,6 +3587,7 @@ int main(void)
 	    {
 	      emergency_stop = 1U;
 	      Motors_StopAll();
+      for(unsigned axis=0;axis<MOTOR_AXIS_COUNT;axis++)pid_enabled[axis]=0U;
 	      static uint8_t estop_message[] =
 	          "ACK CMD=EMERGENCY_STOP ACTIVE=1\r\n";
 	      TelemetryProtocol_Event(estop_message, sizeof(estop_message) - 1U);
@@ -3571,8 +3595,9 @@ int main(void)
 	    else if (usb_command == USB_COMMAND_ESTOP_CLEAR)
 	    {
 	      Motors_StopAll();
-	      for(unsigned axis=0;axis<MOTOR_AXIS_COUNT;axis++)pid_enabled[axis]=0U;
+	      /* Explicit user action: clearing ESTOP does not re-arm motors. */
 	      emergency_stop = 0U;
+      for(unsigned axis=0;axis<MOTOR_AXIS_COUNT;axis++)pid_enabled[axis]=0U;
 	      roll_control.integral = 0.0f;
 	      pitch_control.integral = 0.0f;
 	      yaw_control.integral = 0.0f;
@@ -3598,7 +3623,7 @@ int main(void)
 	      /* Command sign does not measure wheel direction during coasting or
 	         reversal. Do not expose a signed closed loop with invented feedback. */
 	      control_mode = CONTROL_MODE_ATTITUDE;
-	      for(unsigned axis=0;axis<MOTOR_AXIS_COUNT;axis++)pid_enabled[axis]=0U;
+	      /* Keep the operator PID request across calibration, faults and recovery. */
 	      roll_control.integral = 0.0f;
 	      pitch_control.integral = 0.0f;
 	      yaw_control.integral = 0.0f;
@@ -3699,8 +3724,7 @@ int main(void)
 	    }
 	    else if (usb_command == USB_COMMAND_ZERO_YAW)
 	    {
-	      yaw_control.setpoint_deg = attitude_ekf.yaw_deg;
-	      yaw_control.integral = 0.0f;
+	      AttitudeControl_HoldCurrentYaw();
 	      Motors_StopAll();
 	      static uint8_t zero_message[] =
 	          "ACK CMD=ZERO_YAW SETPOINT=CURRENT\r\n";
@@ -3737,7 +3761,7 @@ int main(void)
 	      {const uint8_t ack[]="ACK CMD=CAL_MAG STATE=STARTED\r\n";TelemetryProtocol_Event(ack,sizeof(ack)-1U);}
 	      memset(&accel_calibration, 0, sizeof(accel_calibration));
 	      Motors_StopAll();
-	      for(unsigned axis=0;axis<MOTOR_AXIS_COUNT;axis++)pid_enabled[axis]=0U;
+	      /* Keep the operator PID request across calibration, faults and recovery. */
 	      /* Failed acquisition must not corrupt a working calibration. */
 	      if(GY511_MagCalibrate()==HAL_OK) {
 	        const uint8_t reference[]="CAL STATUS TYPE=MAG PHASE=REFERENCE KEEP_SYSTEM_STILL\r\n";
@@ -3820,11 +3844,11 @@ int main(void)
 	    if(now-last_control_tick>10U)control_late++;
 	    float dt = (float)(now - last_control_tick) * 0.001f;
 	    last_control_tick = now;
-	    if(dt>0.020f) {
+	    if(!ControlTiming_Accept(control_actual_dt_us/1000U,now)) {
 	      Motors_StopAll();
-	      for(unsigned axis=0;axis<MOTOR_AXIS_COUNT;axis++)pid_enabled[axis]=0U;
+	      /* Keep the operator PID request across calibration, faults and recovery. */
 	      fusion_status=HAL_ERROR; /* missing motion interval: explicit reinitialization */
-	      const uint8_t error[]="NACK CMD=CONTROL REASON=DEADLINE_MISSED_DISARMED\r\n";
+	      const uint8_t error[]="NACK CMD=CONTROL REASON=DEADLINE_MISSED_OUTPUT_BLOCKED_PID_REQUEST_RETAINED\r\n";
 	      TelemetryProtocol_Event(error,sizeof(error)-1U);
 	      continue;
 	    }
@@ -3874,7 +3898,8 @@ int main(void)
 	      float body_error[3]={0};
 	      int error_valid=ADCS_AttitudeError(attitude_ekf.q,target_deg,body_error);
 	      float yaw_error=YAW_AXIS_X*body_error[0]+YAW_AXIS_Y*body_error[1]+YAW_AXIS_Z*body_error[2];
-	      uint8_t attitude_mode_enabled = (control_mode == CONTROL_MODE_ATTITUDE) && !emergency_stop && error_valid;
+	      uint8_t attitude_mode_enabled = (control_mode == CONTROL_MODE_ATTITUDE) && !emergency_stop && error_valid && fusion_status==HAL_OK
+	          && !control_timing_paused;
 	      int32_t roll_command = AxisControl_Update(
 	          &roll_control,
 	          attitude_ekf.roll_deg,
@@ -4104,6 +4129,7 @@ static void App_CommunicationService(uint8_t busy)
   if(TelemetryUART_TakeRxLoss())CommandParser_DiscardPartial();
   if(TelemetryUART_TakeEstop()) {
     emergency_stop=1U;Motors_StopAll();CommandParser_Clear();
+      for(unsigned axis=0;axis<MOTOR_AXIS_COUNT;axis++)pid_enabled[axis]=0U;
     const uint8_t ack[]="ACK CMD=EMERGENCY_STOP ACTIVE=1\r\n";
     TelemetryProtocol_Event(ack,sizeof(ack)-1U);
   }
@@ -4124,7 +4150,20 @@ static void App_CommunicationService(uint8_t busy)
   if(busy) {
     ParsedCommand cmd;
     while(CommandParser_Pop(&cmd)) {
-      if(cmd.type==USB_COMMAND_ESTOP) {emergency_stop=1U;Motors_StopAll();}
+      if(cmd.type==USB_COMMAND_PID){
+        if(cmd.enabled && emergency_stop){
+          const uint8_t reject[]="NACK CMD=PID REASON=ESTOP_ACTIVE\r\n";
+          TelemetryProtocol_Event(reject,sizeof(reject)-1U);
+        }else{
+          for(unsigned i=0;i<MOTOR_AXIS_COUNT;i++)if(cmd.axis==i || cmd.axis==MOTOR_AXIS_COUNT){
+            pid_enabled[i]=cmd.enabled;if(!cmd.enabled)Motor_SetAxisCommand((MotorAxis_t)i,0);
+          }
+          char ack[128];int n=snprintf(ack,sizeof(ack),"ACK CMD=PID ENABLE=%u STATE=%u,%u,%u AUTHORITY=OPERATOR BUSY=1\r\n",cmd.enabled,pid_enabled[0],pid_enabled[1],pid_enabled[2]);
+          TelemetryProtocol_Event((uint8_t *)ack,(size_t)n);
+        }
+        continue;
+      }
+      if(cmd.type==USB_COMMAND_ESTOP) {emergency_stop=1U;Motors_StopAll();for(unsigned i=0;i<MOTOR_AXIS_COUNT;i++)pid_enabled[i]=0U;}
       else if(cmd.type==USB_COMMAND_CAL_ACCEL_CANCEL)accel_calibration.active=0U;
       const char *reply=cmd.type==USB_COMMAND_STATUS?"ACK CMD=STATUS BUSY=1\r\n":
           (cmd.type==USB_COMMAND_ESTOP?"ACK CMD=EMERGENCY_STOP ACTIVE=1\r\n":
@@ -4178,6 +4217,13 @@ static void App_BuildSnapshot(TelemetryData *s)
     s->encoder_valid[i]=wheel_encoder[i].speed_valid;s->encoder_fault[i]=wheel_encoder[i].no_pulse_fault;s->encoder_limit[i]=wheel_encoder[i].overspeed_limited;
     s->wheel_ready[i]=wheel_speed_control[i].gains_configured;s->wheel_kp[i]=(int32_t)(wheel_speed_control[i].kp*1000000);
     s->wheel_ki[i]=(int32_t)(wheel_speed_control[i].ki*1000000);s->wheel_kd[i]=(int32_t)(wheel_speed_control[i].kd*1000000);s->pid[i]=pid_enabled[i];
+    /* Requested state and output permission are intentionally separate. */
+    s->pid_block[i]=(emergency_stop?1U:0U)|(mpu_status!=HAL_OK || s->imu_age_ms>20U?2U:0U)
+        |(fusion_status!=HAL_OK?4U:0U)|(app_busy || accel_calibration.active?8U:0U)
+        |(wheel_encoder[i].no_pulse_fault?16U:0U)|(!wheel_encoder[i].speed_valid?32U:0U)
+        |(wheel_encoder[i].overspeed_limited?64U:0U)
+        |(control_timing_paused && (int32_t)(s->uptime_ms-control_pause_until_ms)<0?128U:0U);
+    s->pid_active[i]=pid_enabled[i] && !s->pid_block[i];
   }
   s->encoder_pin[0]=(GPIOA->IDR & GPIO_PIN_8)?1U:0U;
   s->encoder_pin[1]=(GPIOC->IDR & GPIO_PIN_6)?1U:0U;

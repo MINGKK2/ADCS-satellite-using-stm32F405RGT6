@@ -176,7 +176,7 @@
               <div class="debug-line"><span>Encoder / giới hạn</span><strong id="dbgYawSafety">WAIT / OK</strong></div>
             </article>
           </div>
-          <div class="controller-note">Kp / Ki / Kd vòng tư thế: <strong id="attitudeGains">—</strong>. Encoder một kênh chỉ đo độ lớn RPM. Chưa đo được chiều, mô-men hoặc động lượng có dấu. Sau khởi động/calib/xóa ESTOP phải bật lại từng PID.</div>
+          <div class="controller-note">Kp / Ki / Kd vòng tư thế: <strong id="attitudeGains">—</strong>. PID ON/OFF theo lệnh của bạn; calib/phục hồi giữ nguyên yêu cầu. Xem lý do tạm chặn đầu ra ở từng trục. Sau khởi động hoặc xóa ESTOP, dùng nút bật PID. Encoder một kênh chỉ đo độ lớn RPM.</div>
           <div class="controller-note" id="adcsHealth">Chờ chẩn đoán ADCS.</div>
           <div class="controller-note" id="frameAges">Tuổi bản tin: —</div>
         </section>
@@ -394,7 +394,7 @@
       ui.frameAges.textContent='Tuổi bản tin nhanh / cảm biến / chẩn đoán: '+['fast','slow','diag'].map(type=>Number.isFinite(ageOf(type))?Math.round(ageOf(type))+' ms':'chưa nhận').join(' / ')+` · trùng ${duplicates} · sai thứ tự ${reordered}`;
       if(ageOf('fast')>500){ui.roll.textContent=ui.pitch.textContent=ui.yaw.textContent='— (dữ liệu cũ)';ui.dbgRollOutput.textContent=ui.dbgPitchOutput.textContent=ui.dbgYawOutput.textContent=ui.pwm.textContent='— (dữ liệu cũ)';ui.scene.style.opacity=totalPackets?'.35':'1';if(globalThis.cubesatAttitude)globalThis.cubesatAttitude.valid=false;globalThis.cubesatModel?.setValidity(false);setSensorState(ui.linkState,false,'Dữ liệu cũ');lastEnergyAt=0;}
       if(ageOf('slow')>1500){[ui.bmpState,ui.inaState,ui.ahtState].forEach(el=>setSensorState(el,false,'Cảm biến: dữ liệu cũ'));setSensorWarning(ui.magState,'Chưa có bản tin la bàn mới');if(ageOf('fast')<500&&telemetryCache.ATT_VALID==='1')setSensorState(ui.imuState,true,'IMU/EKF còn cập nhật');else setSensorState(ui.imuState,false,'Dữ liệu IMU cũ');}
-      if(ageOf('diag')>2500){setSensorState(ui.encoderState,false,'Chẩn đoán cũ');ui.dbgRollSafety.textContent=ui.dbgPitchSafety.textContent=ui.dbgYawSafety.textContent='CHẨN ĐOÁN CŨ';}
+      if(ageOf('diag')>2500){setSensorState(ui.encoderState,false,'Chẩn đoán cũ');if(!(ageOf('fast')<500&&telemetryCache.PID_BLOCK3))ui.dbgRollSafety.textContent=ui.dbgPitchSafety.textContent=ui.dbgYawSafety.textContent='CHẨN ĐOÁN CŨ';}
       const expired=pendingCommands.filter(c=>now-c.sent>3000);
       if(expired.length){ui.commandState.textContent='Chưa nhận ACK: '+expired.map(c=>c.command).join(' / ');ui.commandState.style.color='var(--yellow)';pendingCommands=pendingCommands.filter(c=>now-c.sent<=3000);}
       if(!lastTelemetryAt){ui.lastFrame.textContent='—';return;}
@@ -443,7 +443,7 @@
       if(line.includes('CAL DONE TYPE=ACCEL')){ui.otherCalState.textContent='Accel: OK';accelCalActive=false;ui.calAccel.textContent='Calib Accel 6 mặt';setCalControls(true);setGuide('Accel 6 mặt hoàn tất. Giữ yên để gyro và EKF khởi tạo lại.');return;}
       if(line.includes('TYPE=ACCEL PHASE=CANCELLED')){accelCalActive=false;ui.calAccel.textContent='Calib Accel 6 mặt';setCalControls(true);setGuide('Đã hủy hiệu chuẩn accel.');return;}
       if(line.includes('CAL ERROR')){if(accelCalActive)ui.captureAccel.disabled=false;setGuide('Lỗi hiệu chuẩn: '+line.replace('CAL ERROR ','')+'. Làm theo hướng dẫn rồi thử lại.',true);return;}
-      if(line.includes('9DOF EKF READY')||line.includes('TYPE=FUSION PHASE=READY')){yawOffset=0;telemetryCache={};streamTimes={fast:null,slow:null,diag:null};accelCalActive=false;ui.calAccel.textContent='Calib Accel 6 mặt';setCalControls(true);setGuide('EKF vừa khởi tạo lại: gốc Yaw đã đổi, PID tắt. Kiểm tra tư thế rồi bật từng trục.');}
+      if(line.includes('9DOF EKF READY')||line.includes('TYPE=FUSION PHASE=READY')){yawOffset=0;telemetryCache={};streamTimes={fast:null,slow:null,diag:null};accelCalActive=false;ui.calAccel.textContent='Calib Accel 6 mặt';setCalControls(true);setGuide('EKF đã khởi tạo: PID giữ yêu cầu bật/tắt của bạn. Xem trạng thái đầu ra từng trục để biết có đang điều khiển hay tạm chặn.');}
     }
     function mergeTelemetry(line){
       if(!/^(?:SEQ|SLOW|DIAG)=/.test(line))return null;
@@ -557,6 +557,12 @@
         ui.dbgRollSafety.textContent=safety(0);ui.dbgPitchSafety.textContent=safety(1);ui.dbgYawSafety.textContent=safety(2);
       }
       if(attitudeGains)ui.attitudeGains.textContent=`Kp ${(attitudeGains[0]/1000).toFixed(3)} · Ki ${(attitudeGains[1]/1000).toFixed(3)} · Kd ${(attitudeGains[2]/1000).toFixed(3)}`;
+      const pidBlocks=vec3(line,'PID_BLOCK3'),pidRequests=vec3(line,'PID');
+      if(pidBlocks&&pidRequests){
+        const reasons=[[1,'ESTOP'],[2,'IMU chưa có mẫu mới'],[4,'EKF đang phục hồi'],[8,'đang calib/phục hồi'],[16,'fault encoder'],[32,'RPM chưa hợp lệ'],[64,'giới hạn RPM'],[128,'trễ chu kỳ']];
+        const state=(i)=>!pidRequests[i]?'PID OFF · theo lệnh bạn':pidBlocks[i]?`PID ON · đầu ra tạm chặn: ${reasons.filter(([bit])=>pidBlocks[i]&bit).map(([,name])=>name).join(', ')}`:'PID ON · đang điều khiển';
+        ui.dbgRollSafety.textContent=state(0);ui.dbgPitchSafety.textContent=state(1);ui.dbgYawSafety.textContent=state(2);
+      }
       const wheelKp=vec3(line,'WKP_u6'),wheelKi=vec3(line,'WKI_u6'),wheelKd=vec3(line,'WKD_u6');
       if(wheelKp&&wheelKi&&wheelKd){
         const gains=(i)=>`${(wheelKp[i]/1e6).toFixed(4)} / ${(wheelKi[i]/1e6).toFixed(4)} / ${(wheelKd[i]/1e6).toFixed(4)}`;

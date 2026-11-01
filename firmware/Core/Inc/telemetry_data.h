@@ -9,7 +9,7 @@ typedef struct {
   uint32_t mag_sample_age_ms,mag_io_errors,calibration_measured;
   uint8_t mag_state,mag_reason,calibration_source,calibration_save_result;
   int32_t body_error[3],gyro_bias[3],raw_rpm[3],mag_ratio_milli,mag_innovation_mdeg;
-  uint8_t encoder_pin[3];
+  uint8_t encoder_pin[3],pid_active[3],pid_block[3];
   int32_t angle[3],target[3],error[3],gyro[3],accel[3],mag[3],quaternion[4],yaw_rate;
   int32_t pid_output[3],requested_pwm[3],pwm[3],rpm_milli[3],count[3],encoder_angle[3];
   int32_t p_term[3],i_term[3],d_term[3],rpm_signed[3],rpm_target[3],rpm_error[3],rpm_limit[3];

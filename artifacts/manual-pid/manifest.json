@@ -1,0 +1,61 @@
+{
+  "firmware_id": "MANUAL_PID_V1",
+  "pid_gains": {
+    "kp": 28,
+    "ki": 2.4,
+    "kd": 8
+  },
+  "pid_authority": "operator command latch; health gates output separately",
+  "compiled": true,
+  "stm32_deployed": false,
+  "motor_tested": false,
+  "wireless_bridge": {
+    "s3_compiled": true,
+    "s3_usb_flashed_verified": true,
+    "s3_host_parser_hardware_confirmed": true,
+    "c3_compiled": true,
+    "c3_usb_flashed": false,
+    "end_to_end_wireless_flash_tested": false
+  },
+  "files": {
+    "STM32CubeIDE.bin": {
+      "bytes": 121988,
+      "sha256": "adaa1d00b91ac0e6e5c0f6afbb2e608602b4270d9453a1d9b14554836d41b95d"
+    },
+    "STM32CubeIDE.elf": {
+      "bytes": 1434512,
+      "sha256": "2aef21231796a6453830f4ea972acb08404468b28ea9c410d6f41f939aec9a5c"
+    },
+    "STM32CubeIDE.map": {
+      "bytes": 692194,
+      "sha256": "9a94d52cbe7907cfdf927f5d899b70931f7147fdcd20714cef9d1919dbf63960"
+    }
+  },
+  "source_sha256": {
+    "firmware/Core/Inc/adcs_math.h": "6b2ea6732eeff89718c720afaecc0715ae97d62c0b3295eda6748515b3de5074",
+    "firmware/Core/Inc/calibration_store.h": "598af29251370ac3f2246a5056a09a98d1ca2d7e75ac36e4329e3505669c7439",
+    "firmware/Core/Inc/command_parser.h": "e4a896488122a309b15fd61561fee03ff8f8eb8a9dd528e3db5c3d1f0a78178f",
+    "firmware/Core/Inc/dma.h": "d4c5792d793dbe887960a8f5e98de901717e239a6390fd091bde319b4dabd0f4",
+    "firmware/Core/Inc/heading_update.h": "cc543c625ba77b5a93ad8463ff9f96cfd6aec682b4eb42dd7527831483c5e3a0",
+    "firmware/Core/Inc/main.h": "7ddb53a56f8c3f1377047156ec5f2a5d041c4b027a977eeeb4999c1ea7d1c29c",
+    "firmware/Core/Inc/stm32f4xx_hal_conf.h": "37a647b3dd20252c77eeebb90d6d87998cdd63a7b4701cd52443eccbd5449396",
+    "firmware/Core/Inc/stm32f4xx_it.h": "63f4e69b814f79b31befbb5e38aa90f1401d2f9ca5d5c24b78ea6f4567bcac99",
+    "firmware/Core/Inc/telemetry_data.h": "e3b5ed2d02cd4cdae7096bab5907f4ec0477d484b3f97be78ec7dcb26755269b",
+    "firmware/Core/Inc/telemetry_protocol.h": "8a7f2a2a063602cc8c37bc1ddef530c49adcd288e55bf22fe2131febeb6a3cd8",
+    "firmware/Core/Inc/telemetry_uart.h": "01a92c5a147d1dd82812ad90a8dc788e750ee6ebbd398384aacffa4777916b66",
+    "firmware/Core/Inc/usart.h": "0a7dc454f9bbdf814022de7d4147ea67f66300ad37cc6a957b94836fd47a0361",
+    "firmware/Core/Src/calibration_store.c": "bc6500456c6b252a348aef7327658dac1cea51ddba0feb198d065b5dc4b9e859",
+    "firmware/Core/Src/command_parser.c": "2bf0636a87883439809b833432eb7977eecaf3114e20ad03fb25640fe2570ab4",
+    "firmware/Core/Src/dma.c": "e6ecd5cce2f38c65326a65ac81ed13a68cb7742514063052b367279223c8c705",
+    "firmware/Core/Src/main.c": "30a1d8fba9b8a0fd9ea9c13491da53be708a74ddfcf21fdbdbbabc26f1522ef6",
+    "firmware/Core/Src/stm32f4xx_hal_msp.c": "7e6760aebb3ef5dc9b5624cc15c4c2869feabbb773c41cb47ad0d56592b57398",
+    "firmware/Core/Src/stm32f4xx_it.c": "13732e99bec9931c284f5d358308227147f9c0636c901c9071b668ca6201ba59",
+    "firmware/Core/Src/syscalls.c": "b993ebb4f882e8be21cec8d95983655a0caf4f0eb11348f20f6371f5a5031717",
+    "firmware/Core/Src/sysmem.c": "c41145817cc20abd8881c38851745d6e509e5f8c44a5179b125d108e51d1d432",
+    "firmware/Core/Src/system_stm32f4xx.c": "a31929eab936ac98db060c18917118acf79dc96e1f03ed4b57d614535dd06d70",
+    "firmware/Core/Src/telemetry_protocol.c": "a12c2eaeaa5c3a877ce8be1a00d54d65f7de549fced55807268307df5e096d7f",
+    "firmware/Core/Src/telemetry_uart.c": "d00f5192cb6701a815548e27b407e6bfc528921d295add1107d6a743be70c88e",
+    "firmware/Core/Src/usart.c": "532a5de4b91bc241b82c1805f1d72f9cfc2bc395d44040843cffd67fb8986d7d",
+    "firmware/Core/Startup/startup_stm32f405rgtx.s": "c26c40ea8a4c27e4a7900e1d29bdfd6cdf6b46fbf4cbebad116a478803bbcb8e"
+  }
+}

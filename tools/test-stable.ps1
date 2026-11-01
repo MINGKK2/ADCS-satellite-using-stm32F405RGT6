@@ -28,6 +28,7 @@ Invoke-Checked $Python @((Join-Path $tests 'test-adcs-source.py'),$ProjectRoot)
 Invoke-Checked $Node @((Join-Path $viewer 'test-dashboard.cjs'))
 Invoke-Checked $Node @((Join-Path $viewer 'test-attitude-model.mjs'))
 $elf=Join-Path $ProjectRoot 'Debug\STM32CubeIDE.elf'
+if(!(Test-Path -LiteralPath $elf)){$elf=Join-Path $repoRoot 'artifacts\manual-pid\STM32CubeIDE.elf'}
 if(!(Test-Path -LiteralPath $elf)){$elf=Join-Path $repoRoot 'artifacts\stable-debug\STM32CubeIDE.elf'}
 Invoke-Checked $Python @((Join-Path $PSScriptRoot 'check-calibration-elf.py'),$elf)
 'ALL_STABLE_TESTS_OK'
