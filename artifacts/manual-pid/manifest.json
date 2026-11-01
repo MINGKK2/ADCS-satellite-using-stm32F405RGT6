@@ -21,7 +21,24 @@
     "wifi_power_save": 0,
     "bidirectional_rpc_ping_verified": true,
     "staged_image_crc32": "312FA9F2",
-    "staged_image_bytes": 122012
+    "staged_image_bytes": 122012,
+    "rom_probe_diagnostics": true,
+    "stm32_rom_confirmed": false,
+    "normal_uart_old_application_frames_in_5_seconds": 97,
+    "c3_artifacts": {
+      "esp32c3_uart_bridge.ino.bin": {
+        "bytes": 1009136,
+        "sha256": "bc1a325f5b370c198bb0bc46353877267ff6477f74e670f11cc1916c276ab4f9"
+      },
+      "esp32c3_uart_bridge.ino.bootloader.bin": {
+        "bytes": 19632,
+        "sha256": "02ec50f8c25603d163d56d599231dfde3c731e7daf98e664496a40da71d3d2a8"
+      },
+      "esp32c3_uart_bridge.ino.partitions.bin": {
+        "bytes": 3072,
+        "sha256": "148b959cbff1c38aa8e1d5c0ba9d612c54997b945e56a63f41223eef650653a1"
+      }
+    }
   },
   "files": {
     "STM32CubeIDE.bin": {

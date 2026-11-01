@@ -31,6 +31,11 @@ int main(){
   uart.replies={{0x1F}};old=uart.tx.size();assert(!rom.write(STM32_FLASH_BASE,bytes,256));assert(uart.tx.size()==old+1);
   rom.normal();assert(!rom.connected&&uart.config==SERIAL_8N1);
   HardwareSerial silent;Stm32Rom absent(silent);assert(!absent.probe());assert(!absent.connected);
+  assert(!strcmp(absent.probeStage,"SYNC")&&absent.lastAck==-1&&absent.receivedBytes==0);
+  HardwareSerial nackUart;nackUart.replies={{0x1F}};Stm32Rom nackRom(nackUart);
+  assert(!nackRom.probe()&&!strcmp(nackRom.probeStage,"SYNC")&&nackRom.lastAck==0x1F&&nackRom.receivedBytes==1);
+  HardwareSerial getNack;getNack.replies={{0x79},{0x1F}};Stm32Rom getRom(getNack);
+  assert(!getRom.probe()&&!strcmp(getRom.probeStage,"GET_COMMAND_ACK")&&getRom.lastAck==0x1F);
   puts("PASS F405 ROM protocol: 8E1/sync/ID/flash size, command/address ACK, NACK/timeout, sector-only erase, no sector11/overflow/unaligned write, 8N1 restore");
   puts("PASS image vector/range/CRC and retry/session guard: duplicate request cannot append or erase twice");
 }

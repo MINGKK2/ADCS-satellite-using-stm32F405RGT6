@@ -66,3 +66,10 @@ On the connected C3, default/high TX power delivered no return ACK even though C
 C3 sends one packet at a time, paced by the ESP-NOW send callback. Main-task update replies have priority and bounded retries; normal telemetry cannot flood the TX pool. SDK logging is silenced on UART0, and bulk USB debug is off by default. USB diagnostics have zero TX timeout and report `C3STAT` every two seconds when the host can accept them.
 
 S3 local diagnostic command `@FWSTAT` reports the actual MAC, channel, PS state and RX/TX counters. Updater control replies are separated by CRLF; the host also resynchronizes at the control marker if an older transparent fragment precedes it. No serial monitor may hold COM23 while the uploader runs.
+
+
+## ROM probe diagnostics
+
+Probe failures report `STAGE`, the last ACK byte as decimal (`-1` means timeout), received-byte count, observed chip ID and Flash size. They never erase or write STM32 Flash. A `SYNC` response other than `0x79` alone does not identify the cause; check whether ordinary 115200 8N1 telemetry still comes from the old application before asking for boot entry again.
+
+On the current bench, after the failed ROM probe, returning to normal UART produced 97 valid fast frames in five seconds (`PID=0,0,0`, `PWM3=0,0,0`, `ESTOP=1`). The old application was still running; this is not a completed update. The image remains staged and verified, awaiting effective STM32 BOOT0 entry. USB C3/S3 firmware uploads and a sealed image do not prove STM32 programming.

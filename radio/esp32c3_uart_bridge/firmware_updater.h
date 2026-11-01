@@ -75,7 +75,10 @@ public:
     }
     case FW_PROBE:{
       if(n || !ready){error(FW_NOT_READY,"SEAL_IMAGE_FIRST");break;}
-      if(!rom.probe()){error(FW_ROM_ERROR,"NO_F405_1MB_BOOTLOADER_CHECK_B0_RESET_UART");break;}
+      if(!rom.probe()){
+        char detail[160];snprintf(detail,sizeof(detail),"ROM_PROBE STAGE=%s ACK=%d RX=%lu ID=%04X FLASH_KB=%u",rom.probeStage,rom.lastAck,(unsigned long)rom.receivedBytes,rom.deviceId,rom.flashKB);
+        error(FW_ROM_ERROR,detail);break;
+      }
       const char id[]="STM32F405_ID0413_FLASH1024KB";response(FW_OK,id,sizeof(id)-1);break;
     }
     case FW_CAL_HASH:{
