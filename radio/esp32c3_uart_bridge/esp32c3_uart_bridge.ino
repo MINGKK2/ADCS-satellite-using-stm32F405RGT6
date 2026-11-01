@@ -2,6 +2,7 @@
 #include <esp_now.h>
 #include <esp_wifi.h>
 #include <driver/gpio.h>
+#include <esp_log.h>
 
 #include "telemetry_protocol.h"
 
@@ -13,6 +14,7 @@ static constexpr int UART1_TX_PIN = 5;
 static constexpr uint32_t UART_BAUD = 115200;
 static constexpr uint8_t ESPNOW_CHANNEL = 1;
 static constexpr uint32_t UART_BATCH_TIMEOUT_US = 3000;
+static constexpr bool USB_VERBOSE=false;
 
 // ESP32-S3 Wi-Fi STA MAC (paired receiver): dc:b4:d9:0b:64:3c
 static const uint8_t S3_ADDRESS[6] = {
@@ -31,6 +33,34 @@ uint32_t uart1ByteCount = 0;
 uint32_t uart0PacketCount = 0;
 uint32_t uart1PacketCount = 0;
 uint32_t sendErrorCount = 0;
+volatile uint32_t radioRx=0,radioPeerRx=0,radioBadFrame=0,radioUpdateRx=0,radioTxAck=0,radioTxNoAck=0;
+volatile bool radioTxBusy=false;
+volatile esp_now_send_status_t radioLastStatus=ESP_NOW_SEND_FAIL;
+volatile int8_t lastRssi=-127;
+void onEspNowSend(const esp_now_send_info_t *,esp_now_send_status_t status){
+  if(status==ESP_NOW_SEND_SUCCESS)radioTxAck=radioTxAck+1;
+  else radioTxNoAck=radioTxNoAck+1;
+  radioLastStatus=status;radioTxBusy=false;
+}
+static esp_err_t radioSend(const uint8_t *address,const uint8_t *data,size_t size){
+  if(radioTxBusy)return ESP_ERR_ESPNOW_NO_MEM;
+  radioTxBusy=true;radioLastStatus=ESP_NOW_SEND_FAIL;
+  esp_err_t status=esp_now_send(address,data,size);
+  if(status!=ESP_OK){radioTxBusy=false;sendErrorCount++;}
+  return status;
+}
+bool FirmwareUpdaterTransport_Send(const uint8_t *address,const uint8_t *data,size_t size){
+  // Main-task only. Respect the send callback; never flood the Wi-Fi TX pool.
+  for(unsigned attempt=0;attempt<3;attempt++){
+    uint32_t start=millis();while(radioTxBusy && millis()-start<300)delay(1);
+    if(radioTxBusy)return false;
+    if(radioSend(address,data,size)!=ESP_OK){delay(5);continue;}
+    start=millis();while(radioTxBusy && millis()-start<300)delay(1);
+    if(!radioTxBusy && radioLastStatus==ESP_NOW_SEND_SUCCESS)return true;
+    delay(5);
+  }
+  return false;
+}
 
 struct ReceivedPacket {
   size_t size;
@@ -38,7 +68,10 @@ struct ReceivedPacket {
 };
 
 void onEspNowReceive(const esp_now_recv_info_t *info, const uint8_t *data, int length) {
+  radioRx=radioRx+1;
   if (!info || memcmp(info->src_addr,S3_ADDRESS,6))return;
+  radioPeerRx=radioPeerRx+1;
+  if(info->rx_ctrl)lastRssi=info->rx_ctrl->rssi;
   if (length < 0 || static_cast<size_t>(length) > sizeof(TelemetryPacket)) {
     return;
   }
@@ -46,6 +79,8 @@ void onEspNowReceive(const esp_now_recv_info_t *info, const uint8_t *data, int l
   ReceivedPacket item{};
   item.size = static_cast<size_t>(length);
   memcpy(&item.packet, data, item.size);
+  if(!packetIsValid(item.packet,item.size)){radioBadFrame=radioBadFrame+1;return;}
+  if(item.packet.type==TYPE_UPDATE_REQUEST)radioUpdateRx=radioUpdateRx+1;
   if (packetIsValid(item.packet, item.size) &&
       (item.packet.type == TYPE_GROUND_TO_UARTS || item.packet.type == TYPE_UPDATE_REQUEST)) {
     xQueueSend(downlinkQueue, &item, 0);
@@ -62,6 +97,9 @@ bool addS3Peer() {
 }
 
 bool startRadio() {
+  // Set Arduino's retained policy before STA_START can reapply it.
+  WiFi.setSleep(false);
+  WiFi.setAutoReconnect(false);
   WiFi.mode(WIFI_STA);
   WiFi.disconnect();
   if (esp_wifi_set_channel(ESPNOW_CHANNEL, WIFI_SECOND_CHAN_NONE) != ESP_OK) {
@@ -70,9 +108,14 @@ bool startRadio() {
   if (esp_now_init() != ESP_OK) {
     return false;
   }
+  if(esp_wifi_set_ps(WIFI_PS_NONE)!=ESP_OK)return false;
+  // The driver is started after set_channel; Arduino's async STA.started()
+  // flag may still lag here. IDF uses quarter-dBm: 34 = 8.5 dBm.
+  if(esp_wifi_set_max_tx_power(34)!=ESP_OK)return false;
   if (!addS3Peer()) {
     return false;
   }
+  if(esp_now_register_send_cb(onEspNowSend)!=ESP_OK)return false;
   return esp_now_register_recv_cb(onEspNowReceive) == ESP_OK;
 }
 
@@ -100,15 +143,11 @@ void sendUartBatch(HardwareSerial &port, uint8_t packetType,
     delayMicroseconds(100);
   }
 
-  Serial.write(packet.payload, packet.length);
-  Serial.println();
+  if(USB_VERBOSE){Serial.write(packet.payload, packet.length);Serial.println();}
   packet.crc = packetCrc(packet);
   byteCount += packet.length;
   packetCount++;
-  if (esp_now_send(S3_ADDRESS, reinterpret_cast<uint8_t *>(&packet),
-                   TELEMETRY_HEADER_SIZE + packet.length) != ESP_OK) {
-    sendErrorCount++;
-  }
+  (void)radioSend(S3_ADDRESS,reinterpret_cast<uint8_t *>(&packet),TELEMETRY_HEADER_SIZE+packet.length);
 }
 
 void writeCommandsToUarts() {
@@ -116,9 +155,7 @@ void writeCommandsToUarts() {
   while (xQueueReceive(downlinkQueue, &item, 0) == pdTRUE) {
     if(item.packet.type==TYPE_UPDATE_REQUEST){updater.handle(item.packet);continue;}
     if(updater.busy())continue;
-    Serial.print("[S3 -> C3 UART0+UART1] ");
-    Serial.write(item.packet.payload, item.packet.length);
-    Serial.println();
+    if(USB_VERBOSE){Serial.print("[S3 -> C3 UART0+UART1] ");Serial.write(item.packet.payload, item.packet.length);Serial.println();}
     // Ground commands are mirrored to both physical UART ports.
     TelemetryUart0.write(item.packet.payload, item.packet.length);
     TelemetryUart1.write(item.packet.payload, item.packet.length);
@@ -151,15 +188,18 @@ void forwardUsbInput() {
   TelemetryUart0.write(packet.payload, packet.length);
   TelemetryUart1.write(packet.payload, packet.length);
   packet.crc = packetCrc(packet);
-  esp_now_send(S3_ADDRESS, reinterpret_cast<uint8_t *>(&packet),
-               TELEMETRY_HEADER_SIZE + packet.length);
-  Serial.print("[C3 USB -> UART0+UART1+S3] ");
-  Serial.write(packet.payload, packet.length);
-  Serial.println();
+  (void)radioSend(S3_ADDRESS,reinterpret_cast<uint8_t *>(&packet),TELEMETRY_HEADER_SIZE+packet.length);
+  if(USB_VERBOSE){Serial.print("[C3 USB -> UART0+UART1+S3] ");Serial.write(packet.payload, packet.length);Serial.println();}
 }
 
 void setup() {
   Serial.begin(115200); // Native USB debug; enable "USB CDC On Boot".
+  Serial.setTxTimeoutMs(0); // Debug USB must not stall UART/radio when closed.
+  // UART0 is the STM32 protocol wire, including binary ROM mode. SDK error
+  // logging must not inject text into it; explicit diagnostics use USB below.
+  esp_log_level_set("*",ESP_LOG_NONE);
+  TelemetryUart0.setRxBufferSize(8192);
+  TelemetryUart1.setRxBufferSize(1024);
   TelemetryUart0.begin(UART_BAUD, SERIAL_8N1, UART0_RX_PIN, UART0_TX_PIN);
   TelemetryUart1.begin(UART_BAUD, SERIAL_8N1, UART1_RX_PIN, UART1_TX_PIN);
   // UART idle is HIGH. Prevent random bytes when a source is unplugged.
@@ -177,13 +217,19 @@ void setup() {
 }
 
 void loop() {
-  if (!updater.busy() && TelemetryUart0.available()) {
-    Serial.print("[C3 UART0 -> S3] ");
+  writeCommandsToUarts();
+  static uint32_t diagTick=0;
+  if(Serial && Serial.availableForWrite()>220 && millis()-diagTick>=2000){
+    diagTick=millis();uint8_t channel=0;wifi_second_chan_t second;wifi_ps_type_t ps;int8_t power=0;esp_wifi_get_channel(&channel,&second);esp_wifi_get_ps(&ps);esp_wifi_get_max_tx_power(&power);
+    Serial.printf("C3STAT FW=UPDATER_V1 MAC=%s CH=%u PS=%u PWR_qdbm=%d RSSI=%d RX=%lu PEER=%lu BAD=%lu UPDATE=%lu TXACK=%lu TXFAIL=%lu SENDERR=%lu BUSY=%u U0=%lu\r\n",WiFi.macAddress().c_str(),channel,(unsigned)ps,(int)power,(int)lastRssi,(unsigned long)radioRx,(unsigned long)radioPeerRx,(unsigned long)radioBadFrame,(unsigned long)radioUpdateRx,(unsigned long)radioTxAck,(unsigned long)radioTxNoAck,(unsigned long)sendErrorCount,updater.busy(),(unsigned long)uart0ByteCount);
+  }
+  if (!updater.busy() && !radioTxBusy && TelemetryUart0.available()) {
+    if(USB_VERBOSE)Serial.print("[C3 UART0 -> S3] ");
     sendUartBatch(TelemetryUart0, TYPE_UART0_TO_GROUND,
                   uart0Sequence, uart0ByteCount, uart0PacketCount);
   }
-  if (!updater.busy() && TelemetryUart1.available()) {
-    Serial.print("[C3 UART1 -> S3] ");
+  if (!updater.busy() && !radioTxBusy && TelemetryUart1.available()) {
+    if(USB_VERBOSE)Serial.print("[C3 UART1 -> S3] ");
     sendUartBatch(TelemetryUart1, TYPE_UART1_TO_GROUND,
                   uart1Sequence, uart1ByteCount, uart1PacketCount);
   }

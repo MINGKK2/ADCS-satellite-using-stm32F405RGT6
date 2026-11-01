@@ -3,13 +3,14 @@
 #include <mbedtls/sha256.h>
 #include "stm32_rom.h"
 #include "telemetry_protocol.h"
+bool FirmwareUpdaterTransport_Send(const uint8_t *peer,const uint8_t *data,size_t size);
 class FirmwareUpdater {
   Stm32Rom rom;const uint8_t *peer;RequestGuard guard;
   TelemetryPacket cached{};bool haveCache=false,active=false,ready=false,verified=false,calCaptured=false;
   File incoming;uint32_t imageSize=0,imageCrc=0,received=0,currentSeq=0,currentSession=0;uint8_t currentOp=0;
   uint8_t calBefore[32]{};
   static constexpr const char *path="/stm32-update.bin";
-  void send(const TelemetryPacket &p){esp_now_send(peer,reinterpret_cast<const uint8_t *>(&p),TELEMETRY_HEADER_SIZE+p.length);}
+  void send(const TelemetryPacket &p){FirmwareUpdaterTransport_Send(peer,reinterpret_cast<const uint8_t *>(&p),TELEMETRY_HEADER_SIZE+p.length);}
   void response(uint8_t status,const void *body=nullptr,size_t n=0,bool cache=true){
     TelemetryPacket p{};p.magic=TELEMETRY_MAGIC;p.version=TELEMETRY_VERSION;p.type=TYPE_UPDATE_RESPONSE;p.sequence=currentSeq;
     n=n>TELEMETRY_MAX_PAYLOAD-6?TELEMETRY_MAX_PAYLOAD-6:n;

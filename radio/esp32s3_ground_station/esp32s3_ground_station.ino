@@ -1,6 +1,7 @@
 #include <WiFi.h>
 #include <esp_now.h>
 #include <esp_wifi.h>
+#include <esp_log.h>
 
 #include "telemetry_protocol.h"
 #include "update_wire.h"
@@ -15,6 +16,11 @@ static const uint8_t C3_ADDRESS[6] = {
 
 QueueHandle_t telemetryQueue = nullptr;
 uint32_t commandSequence = 0;
+volatile uint32_t radioRx=0,radioMatched=0,radioBad=0,radioTxAck=0,radioTxFail=0;
+esp_err_t lastSendError=ESP_OK;
+void onEspNowSend(const esp_now_send_info_t *,esp_now_send_status_t status){
+  if(status==ESP_NOW_SEND_SUCCESS)radioTxAck=radioTxAck+1;else radioTxFail=radioTxFail+1;
+}
 
 struct ReceivedPacket {
   size_t size;
@@ -22,7 +28,9 @@ struct ReceivedPacket {
 };
 
 void onEspNowReceive(const esp_now_recv_info_t *info, const uint8_t *data, int length) {
+  radioRx=radioRx+1;
   if(!info || memcmp(info->src_addr,C3_ADDRESS,6))return;
+  radioMatched=radioMatched+1;
   if (length < 0 || static_cast<size_t>(length) > sizeof(TelemetryPacket)) {
     return;
   }
@@ -30,6 +38,7 @@ void onEspNowReceive(const esp_now_recv_info_t *info, const uint8_t *data, int l
   ReceivedPacket item{};
   item.size = static_cast<size_t>(length);
   memcpy(&item.packet, data, item.size);
+  if(!packetIsValid(item.packet,item.size)){radioBad=radioBad+1;return;}
   if (packetIsValid(item.packet, item.size) &&
       (item.packet.type == PRIMARY_TELEMETRY_TYPE || item.packet.type == TYPE_UPDATE_RESPONSE)) {
     xQueueSend(telemetryQueue, &item, 0);
@@ -37,6 +46,9 @@ void onEspNowReceive(const esp_now_recv_info_t *info, const uint8_t *data, int l
 }
 
 bool startRadio() {
+  // Keep the Arduino STA_START event from restoring MIN_MODEM later.
+  WiFi.setSleep(false);
+  WiFi.setAutoReconnect(false);
   WiFi.mode(WIFI_STA);
   WiFi.disconnect();
   if (esp_wifi_set_channel(ESPNOW_CHANNEL, WIFI_SECOND_CHAN_NONE) != ESP_OK ||
@@ -52,6 +64,7 @@ bool startRadio() {
   if (esp_now_add_peer(&peer) != ESP_OK) {
     return false;
   }
+  if(esp_wifi_set_ps(WIFI_PS_NONE)!=ESP_OK || esp_now_register_send_cb(onEspNowSend)!=ESP_OK)return false;
   return esp_now_register_recv_cb(onEspNowReceive) == ESP_OK;
 }
 
@@ -63,7 +76,7 @@ void writeTelemetryToUsb() {
     if(item.packet.type==TYPE_UPDATE_RESPONSE){
       if(item.packet.length<6)continue;
       const uint8_t *v=item.packet.payload;
-      Serial.printf("%s %lu %lu %u %u ",v[1]==FW_PROGRESS?"@FWPROGRESS":"@FWACK",(unsigned long)wire32(v+2),(unsigned long)item.packet.sequence,v[0],v[1]);
+      Serial.printf("\r\n%s %lu %lu %u %u ",v[1]==FW_PROGRESS?"@FWPROGRESS":"@FWACK",(unsigned long)wire32(v+2),(unsigned long)item.packet.sequence,v[0],v[1]);
       for(size_t i=6;i<item.packet.length;i++)Serial.printf("%02X",v[i]);
       Serial.print("\r\n");
     }else Serial.write(item.packet.payload, item.packet.length);
@@ -72,6 +85,10 @@ void writeTelemetryToUsb() {
 
 static int hexNibble(char c){if(c>='0'&&c<='9')return c-'0';if(c>='A'&&c<='F')return c-'A'+10;if(c>='a'&&c<='f')return c-'a'+10;return -1;}
 static void hostLine(char *line,size_t length){
+  if(!strcmp(line,"@FWSTAT")){
+    uint8_t channel=0;wifi_second_chan_t second;wifi_ps_type_t ps;esp_wifi_get_channel(&channel,&second);esp_wifi_get_ps(&ps);
+    Serial.printf("\r\n@FWSTAT FW=S3_UPDATER_V2 MAC=%s CH=%u PS=%u RX=%lu MATCH=%lu BAD=%lu TXACK=%lu TXFAIL=%lu SENDERR=%ld\r\n",WiFi.macAddress().c_str(),channel,(unsigned)ps,(unsigned long)radioRx,(unsigned long)radioMatched,(unsigned long)radioBad,(unsigned long)radioTxAck,(unsigned long)radioTxFail,(long)lastSendError);return;
+  }
   TelemetryPacket packet{};packet.magic=TELEMETRY_MAGIC;packet.version=TELEMETRY_VERSION;
   if(!strncmp(line,"@FW ",4)){
     unsigned long session=0,seq=0;unsigned op=0;int consumed=0;
@@ -88,7 +105,7 @@ static void hostLine(char *line,size_t length){
     memcpy(packet.payload,line,length);packet.payload[length]='\n';
   }
   packet.crc=packetCrc(packet);
-  esp_now_send(C3_ADDRESS,reinterpret_cast<uint8_t *>(&packet),TELEMETRY_HEADER_SIZE+packet.length);
+  lastSendError=esp_now_send(C3_ADDRESS,reinterpret_cast<uint8_t *>(&packet),TELEMETRY_HEADER_SIZE+packet.length);
 }
 void sendUsbCommands(){
   static char line[512];static size_t length=0;static bool discard=false;
@@ -104,6 +121,7 @@ void sendUsbCommands(){
 
 void setup() {
   Serial.begin(115200);
+  esp_log_level_set("*",ESP_LOG_NONE);
   telemetryQueue = xQueueCreate(16, sizeof(ReceivedPacket));
   if (telemetryQueue == nullptr || !startRadio()) {
     Serial.println("FATAL: telemetry radio initialization failed");

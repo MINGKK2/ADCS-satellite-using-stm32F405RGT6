@@ -56,3 +56,13 @@ The existing local DFU backup retains the actual calibration bytes. The wireless
 `tests/test-rom.cpp` compiles the actual ROM driver with a scripted UART. It checks sync/parity, ID/size responses, ACK/NACK/timeouts, sector-list encoding, protected-sector/address/alignment guards, CRC/vector checks and duplicate-request handling. `tests/test-host.py` checks host retry identity, session matching and image guards.
 
 Build success and these tests do not prove a wireless hardware transfer. Record an actual `deployment.json` only after readback and calibration comparison succeed; report separately whether post-GO telemetry and motor/attitude operation were tested.
+
+## Radio issues verified during commissioning
+
+Both peers use Wi-Fi channel 1, with Arduino `WiFi.setSleep(false)` set **before** `WiFi.mode(WIFI_STA)`. The 3.3.3 STA_START handler reapplies `WiFi.getSleep()`; a low-level `esp_wifi_set_ps(NONE)` alone was overwritten (measured PS=1). The retained policy now yields PS=0 on both.
+
+On the connected C3, default/high TX power delivered no return ACK even though C3 received valid S3 requests. Limiting C3 to 34 quarter-dBm (8.5 dBm) changed the measured result to 2909 MAC ACKs / 0 failures and a successful bidirectional updater PING; RSSI was -38 dBm. This is a measured bench setting for this hardware, not a range guarantee.
+
+C3 sends one packet at a time, paced by the ESP-NOW send callback. Main-task update replies have priority and bounded retries; normal telemetry cannot flood the TX pool. SDK logging is silenced on UART0, and bulk USB debug is off by default. USB diagnostics have zero TX timeout and report `C3STAT` every two seconds when the host can accept them.
+
+S3 local diagnostic command `@FWSTAT` reports the actual MAC, channel, PS state and RX/TX counters. Updater control replies are separated by CRLF; the host also resynchronizes at the control marker if an older transparent fragment precedes it. No serial monitor may hold COM23 while the uploader runs.

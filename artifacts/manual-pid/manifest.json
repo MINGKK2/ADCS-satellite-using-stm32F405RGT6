@@ -14,21 +14,27 @@
     "s3_usb_flashed_verified": true,
     "s3_host_parser_hardware_confirmed": true,
     "c3_compiled": true,
-    "c3_usb_flashed": false,
-    "end_to_end_wireless_flash_tested": false
+    "c3_usb_flashed": true,
+    "end_to_end_wireless_flash_tested": false,
+    "c3_usb_identity": "ESP32-C3 rev0.4, embedded Flash 4MB",
+    "c3_tx_power_dbm": 8.5,
+    "wifi_power_save": 0,
+    "bidirectional_rpc_ping_verified": true,
+    "staged_image_crc32": "312FA9F2",
+    "staged_image_bytes": 122012
   },
   "files": {
     "STM32CubeIDE.bin": {
-      "bytes": 121988,
-      "sha256": "adaa1d00b91ac0e6e5c0f6afbb2e608602b4270d9453a1d9b14554836d41b95d"
+      "bytes": 122012,
+      "sha256": "f04fec06578708a5c233a1cf0d0446083a3cbbf315ed78b1d61220bc061c1eec"
     },
     "STM32CubeIDE.elf": {
-      "bytes": 1434512,
-      "sha256": "2aef21231796a6453830f4ea972acb08404468b28ea9c410d6f41f939aec9a5c"
+      "bytes": 1435020,
+      "sha256": "9c4f6504166da73f7c0439e9badb607a163c5b5563ac84ad5f7386f028815552"
     },
     "STM32CubeIDE.map": {
       "bytes": 692194,
-      "sha256": "9a94d52cbe7907cfdf927f5d899b70931f7147fdcd20714cef9d1919dbf63960"
+      "sha256": "3841dd557e8f9714422292bb562657d6ce45203b3020cce5e8020bd2ed397252"
     }
   },
   "source_sha256": {
@@ -47,7 +53,7 @@
     "firmware/Core/Src/calibration_store.c": "bc6500456c6b252a348aef7327658dac1cea51ddba0feb198d065b5dc4b9e859",
     "firmware/Core/Src/command_parser.c": "2bf0636a87883439809b833432eb7977eecaf3114e20ad03fb25640fe2570ab4",
     "firmware/Core/Src/dma.c": "e6ecd5cce2f38c65326a65ac81ed13a68cb7742514063052b367279223c8c705",
-    "firmware/Core/Src/main.c": "30a1d8fba9b8a0fd9ea9c13491da53be708a74ddfcf21fdbdbbabc26f1522ef6",
+    "firmware/Core/Src/main.c": "335a6c4d2dffd111e5f5d758a851e90c4047e62cd8a84458c2c224b3355d14ee",
     "firmware/Core/Src/stm32f4xx_hal_msp.c": "7e6760aebb3ef5dc9b5624cc15c4c2869feabbb773c41cb47ad0d56592b57398",
     "firmware/Core/Src/stm32f4xx_it.c": "13732e99bec9931c284f5d358308227147f9c0636c901c9071b668ca6201ba59",
     "firmware/Core/Src/syscalls.c": "b993ebb4f882e8be21cec8d95983655a0caf4f0eb11348f20f6371f5a5031717",

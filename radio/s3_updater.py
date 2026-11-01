@@ -23,7 +23,9 @@ class Gateway:
             while time.monotonic()<deadline:
                 line=self.port.readline().decode('ascii','replace').strip()
                 if not line:continue
-                m=re.fullmatch(r'(@FWACK|@FWPROGRESS) (\d+) (\d+) (\d+) (\d+)(?: ([0-9A-Fa-f]*))?',line)
+                # A response may follow a partial transparent UART frame.
+                # The control marker/session/id resynchronizes independently.
+                m=re.search(r'(@FWACK|@FWPROGRESS) (\d+) (\d+) (\d+) (\d+)(?: ([0-9A-Fa-f]*))?$',line)
                 if not m:continue
                 kind,s,seq,received_op,status,body=m.groups()
                 if (int(s),int(seq),int(received_op))!=(self.session,self.seq,op):continue

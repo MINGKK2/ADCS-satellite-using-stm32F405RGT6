@@ -3,6 +3,12 @@
   "s3_usb_flashed_verified": true,
   "s3_host_parser_hardware_confirmed": true,
   "c3_compiled": true,
-  "c3_usb_flashed": false,
-  "end_to_end_wireless_flash_tested": false
+  "c3_usb_flashed": true,
+  "end_to_end_wireless_flash_tested": false,
+  "c3_usb_identity": "ESP32-C3 rev0.4, embedded Flash 4MB",
+  "c3_tx_power_dbm": 8.5,
+  "wifi_power_save": 0,
+  "bidirectional_rpc_ping_verified": true,
+  "staged_image_crc32": "312FA9F2",
+  "staged_image_bytes": 122012
 }

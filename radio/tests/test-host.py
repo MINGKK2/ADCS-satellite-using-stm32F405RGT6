@@ -7,7 +7,7 @@ class Port:
     def write(self,data):
         self.writes.append(data);_,session,seq,op,_=data.decode().strip().split()
         if self.lost and len(self.writes)==1:return
-        self.lines=[b'SEQ=10 R=0 P=0 Y=0\r\n',f'@FWACK {int(session)+1} {seq} {op} 0 626164\r\n'.encode(),f'@FWACK {session} {seq} {op} 0 6F6B\r\n'.encode()]
+        self.lines=[b'SEQ=10 R=0 P=0 Y=0\r\n',f'@FWACK {int(session)+1} {seq} {op} 0 626164\r\n'.encode(),f'SEQ=11 R=0 PWM3=0,@FWACK {session} {seq} {op} 0 6F6B\r\n'.encode()]
     def flush(self):pass
     def readline(self):return self.lines.pop(0) if self.lines else b''
 class HostTests(unittest.TestCase):

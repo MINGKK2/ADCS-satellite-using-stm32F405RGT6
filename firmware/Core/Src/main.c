@@ -3346,6 +3346,11 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
+  /* ROM-UART GO may enter with a system-memory vector mapping. The image is
+     linked at FLASH_BASE, so select its IRQ table before HAL/SysTick/DMA. */
+  SCB->VTOR=FLASH_BASE;
+  __DSB();
+  __ISB();
 
   /* USER CODE END 1 */
 
