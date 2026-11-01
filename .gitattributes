@@ -1,0 +1,5 @@
+# Keep generated firmware artifacts byte-identical to their SHA-256 manifests.
+artifacts/**/*.elf binary
+artifacts/**/*.bin binary
+artifacts/**/*.hex binary
+artifacts/**/*.map binary

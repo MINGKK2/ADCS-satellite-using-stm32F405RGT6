@@ -23,6 +23,7 @@ prefix='''#include <stdint.h>
 #include <assert.h>
 #include "heading_update.h"
 #include "calibration_store.h"
+#include "axis_frame.h"
 typedef enum {MOTOR_AXIS_ROLL,MOTOR_AXIS_PITCH,MOTOR_AXIS_YAW,MOTOR_AXIS_COUNT} MotorAxis_t;
 typedef struct {uint32_t CNT;} TIM_TypeDef;
 typedef enum {HAL_OK,HAL_ERROR,HAL_BUSY} HAL_StatusTypeDef;

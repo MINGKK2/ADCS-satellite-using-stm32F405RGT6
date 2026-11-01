@@ -35,6 +35,7 @@
 #include "usart.h"
 #include "dma.h"
 #include "calibration_store.h"
+#include "axis_frame.h"
 /* USER CODE END Includes */
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
@@ -138,23 +139,23 @@ static void Calibration_Save(uint32_t measured_flags);
 #define MOTOR_MAX_PWM         255
 #define MOTOR_MIN_PWM         0
 #define MOTOR_COMMAND_DEADBAND 0
-/* Yaw mounting transform reverses sensor Z; +1 preserves the prior motor response. */
+/* Motor command polarity is independent of the sensor-to-body axis mapping. */
 #define ROLL_MOTOR_CONTROL_SIGN   (1.0f)
-#define PITCH_MOTOR_CONTROL_SIGN (-1.0f)
+#define PITCH_MOTOR_CONTROL_SIGN  (1.0f)
 #define YAW_MOTOR_CONTROL_SIGN   (-1.0f)
 
 /* Existing outer-loop attitude gains retained as the current baseline.
    They are not claimed as plant-identified values; verify them from logged
    step tests before treating the tuning as final. */
-#define ROLL_KP               28.0f
+#define ROLL_KP               (28.0f / 2.4f)
 #define ROLL_KI                2.4f
 #define ROLL_KD                8.0f
 #define ROLL_INTEGRAL_LIMIT    80.0f
-#define PITCH_KP              28.0f
+#define PITCH_KP              (28.0f / 2.4f)
 #define PITCH_KI               2.4f
 #define PITCH_KD               8.0f
 #define PITCH_INTEGRAL_LIMIT   80.0f
-#define YAW_KP                28.0f
+#define YAW_KP                (28.0f / 2.4f)
 #define YAW_KI                2.4f
 #define YAW_KD                8.0f
 #define YAW_INTEGRAL_LIMIT     80.0f
@@ -197,9 +198,12 @@ static void Calibration_Save(uint32_t measured_flags);
 #define MAG_SCALE_Z_DEFAULT       0.990697f
 
 /* Reaction-wheel axis identified from a bidirectional rotation test. */
-#define YAW_AXIS_X             (-0.0999073f)
-#define YAW_AXIS_Y               0.0832897f
-#define YAW_AXIS_Z               0.9915046f
+#define YAW_LEGACY_AXIS_X      (-0.0999073f)
+#define YAW_LEGACY_AXIS_Y        0.0832897f
+#define YAW_LEGACY_AXIS_Z        0.9915046f
+#define YAW_AXIS_X             YAW_LEGACY_AXIS_Y
+#define YAW_AXIS_Y           (-YAW_LEGACY_AXIS_X)
+#define YAW_AXIS_Z             YAW_LEGACY_AXIS_Z
 
 /* Each wheel uses one digital optical output.  With 25 slots and rising-edge
    counting there are exactly 25 pulses/revolution.  A one-channel encoder
@@ -419,7 +423,7 @@ static float pending_setpoint_deg[MOTOR_AXIS_COUNT] = {0.0f, 0.0f, 0.0f};
 static float pending_wheel_rpm[MOTOR_AXIS_COUNT] = {0.0f, 0.0f, 0.0f};
 static float pending_wheel_pid_gain[3] = {0.0f, 0.0f, 0.0f};
 static float pending_rpm_limit[MOTOR_AXIS_COUNT] = {0.0f, 0.0f, 0.0f};
-/* Explicit arm after reset/calibration/recovery; never start a wheel at boot. */
+/* Explicit arm after boot; loss of the ground station never disarms PID. */
 /* Operator request latch. Only PID commands/explicit ESTOP may change it. */
 static uint8_t pid_enabled[MOTOR_AXIS_COUNT] = {0U, 0U, 0U};
 static uint8_t control_targets_initialized=0U;
@@ -478,7 +482,7 @@ static void Calibration_Load(void)
     memcpy(magnetometer.offset,data.mag_offset,sizeof(magnetometer.offset));
     memcpy(magnetometer.scale,data.mag_scale,sizeof(magnetometer.scale));magnetometer.calibrated=1U;
   }
-  if(data.flags&CALIBRATION_GYRO){memcpy(calibration_gyro_bias,data.gyro_bias,sizeof(calibration_gyro_bias));calibration_gyro_valid=1U;}
+  if(data.flags&CALIBRATION_GYRO){ADCS_GyroBiasLoad(data.gyro_bias,calibration_gyro_bias);calibration_gyro_valid=1U;}
   calibration_measured_flags=data.measured_flags;calibration_from_flash=1U;calibration_save_result=CAL_STORE_OK;
 }
 static void Calibration_Save(uint32_t measured_flags)
@@ -493,7 +497,7 @@ static void Calibration_Save(uint32_t measured_flags)
   data.measured_flags=calibration_measured_flags;data.mpu_who=mpu_who_am_i;data.mag_type=(uint32_t)gy511_mag_type;
   memcpy(data.accel_offset,accel_offset_raw,sizeof(accel_offset_raw));memcpy(data.accel_scale,accel_scale,sizeof(accel_scale));
   memcpy(data.mag_offset,magnetometer.offset,sizeof(magnetometer.offset));memcpy(data.mag_scale,magnetometer.scale,sizeof(magnetometer.scale));
-  memcpy(data.gyro_bias,calibration_gyro_bias,sizeof(calibration_gyro_bias));
+  ADCS_GyroBiasSave(calibration_gyro_bias,data.gyro_bias);
   calibration_save_result=CalibrationStore_Save(&data);
   if(calibration_save_result==CAL_STORE_OK)calibration_from_flash=1U;
   char message[112];int n=snprintf(message,sizeof(message),"CAL %s TYPE=STORAGE RESULT=%u SOURCE=%s MEASURED=%lu\r\n",
@@ -1717,6 +1721,7 @@ static void GY511_MagToBody(
               * calibrated_sensor[MAG_BODY_Y_SENSOR_AXIS];
   body_mag[2] = MAG_BODY_Z_SIGN
               * calibrated_sensor[MAG_BODY_Z_SENSOR_AXIS];
+  ADCS_LegacyToBody(body_mag,body_mag);
 }
 
 static HAL_StatusTypeDef GY511_MagCalibrate(void)
@@ -1831,10 +1836,11 @@ static void SensorToBodyAccel(
   float calibrated_sensor_z =
       (sensor_z_raw - accel_offset_raw[2]) * accel_scale[2];
 
-  /* IMU is mounted upside down: proper 180-degree rotation about body Y. */
+  /* Historical sensor mounting first; apply measured body-basis rotation below. */
   body_accel_raw[0] = -calibrated_sensor_x;
   body_accel_raw[1] =  calibrated_sensor_y;
   body_accel_raw[2] = -calibrated_sensor_z;
+  ADCS_LegacyToBody(body_accel_raw,body_accel_raw);
 }
 
 static void SensorToBodyGyroRad(
@@ -1846,6 +1852,7 @@ static void SensorToBodyGyroRad(
   body_gyro_rad_s[0] = -(sensor_x_raw / GYRO_LSB_PER_DPS) * DEG_TO_RAD;
   body_gyro_rad_s[1] =  (sensor_y_raw / GYRO_LSB_PER_DPS) * DEG_TO_RAD;
   body_gyro_rad_s[2] = -(sensor_z_raw / GYRO_LSB_PER_DPS) * DEG_TO_RAD;
+  ADCS_LegacyToBody(body_gyro_rad_s,body_gyro_rad_s);
 }
 
 static HAL_StatusTypeDef Sensor_Calibrate(
@@ -3346,12 +3353,12 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
-  /* ROM-UART GO may enter with a system-memory vector mapping. The image is
-     linked at FLASH_BASE, so select its IRQ table before HAL/SysTick/DMA. */
-  SCB->VTOR=FLASH_BASE;
+  /* Select application IRQ vectors before HAL configures SysTick/UART/DMA,
+   * also when entered by the ROM bootloader GO command instead of reset. */
+  SCB->VTOR = FLASH_BASE;
   __DSB();
   __ISB();
-
+  __enable_irq();
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -3381,7 +3388,8 @@ int main(void)
   Motor_Init();
   WheelEncoders_Init();
   Motors_StopAll();
-  if(huart1.Instance!=USART1){MX_DMA_Init();MX_USART1_UART_Init();}
+  MX_DMA_Init();
+  MX_USART1_UART_Init();
   CommandParser_Init();TelemetryProtocol_Init();
   (void)TelemetryUART_Init();
   App_Wait(100);
@@ -4230,6 +4238,9 @@ static void App_BuildSnapshot(TelemetryData *s)
         |(control_timing_paused && (int32_t)(s->uptime_ms-control_pause_until_ms)<0?128U:0U);
     s->pid_active[i]=pid_enabled[i] && !s->pid_block[i];
   }
+  /* Hardware confirmed: Pitch=PC6, Yaw=PA0; Roll not installed. This
+   * reports presence without bypassing motor/encoder fault supervision. */
+  s->encoder_installed[0]=0U;s->encoder_installed[1]=1U;s->encoder_installed[2]=1U;
   s->encoder_pin[0]=(GPIOA->IDR & GPIO_PIN_8)?1U:0U;
   s->encoder_pin[1]=(GPIOC->IDR & GPIO_PIN_6)?1U:0U;
   s->encoder_pin[2]=(GPIOA->IDR & GPIO_PIN_0)?1U:0U;

@@ -176,7 +176,7 @@
               <div class="debug-line"><span>Encoder / giới hạn</span><strong id="dbgYawSafety">WAIT / OK</strong></div>
             </article>
           </div>
-          <div class="controller-note">Kp / Ki / Kd vòng tư thế: <strong id="attitudeGains">—</strong>. PID ON/OFF theo lệnh của bạn; calib/phục hồi giữ nguyên yêu cầu. Xem lý do tạm chặn đầu ra ở từng trục. Sau khởi động hoặc xóa ESTOP, dùng nút bật PID. Encoder một kênh chỉ đo độ lớn RPM.</div>
+          <div class="controller-note">Kp / Ki / Kd vòng tư thế: <strong id="attitudeGains">—</strong>. PID ON/OFF theo lệnh của bạn; calib/phục hồi giữ nguyên yêu cầu. Xem lý do tạm chặn đầu ra ở từng trục. Sau khởi động hoặc xóa ESTOP, dùng nút bật PID. Encoder một kênh chỉ đo độ lớn RPM. STM32 giữ PID/target độc lập khi S3 mất nguồn; trạng thái hiện tại chỉ xác nhận được khi có telemetry. Trục thân mới giữ Yaw: Roll theo Pitch cũ, Pitch ngược Roll cũ.</div>
           <div class="controller-note" id="adcsHealth">Chờ chẩn đoán ADCS.</div>
           <div class="controller-note" id="frameAges">Tuổi bản tin: —</div>
         </section>
@@ -325,7 +325,7 @@
         </div>
         <div class="control-card">
           <h3>Giữ vị trí · PID cố định</h3>
-          <p class="help">Bật PID trục cần giữ sau khởi động. La bàn bị nhiễu: tiếp tục gyro/accel, giữ nguyên target và PID. Kp = 28 · Ki = 2.4 · Kd = 8.</p>
+          <p class="help">Bật PID trục cần giữ sau khởi động. La bàn bị nhiễu: tiếp tục gyro/accel, giữ nguyên target và PID. Hệ số Kp / Ki / Kd thực tế được cập nhật từ telemetry ở phần giám sát.</p>
           <div id="transportHealth" class="help">UART: chờ dữ liệu</div><div id="sensorHealth" class="help">Cảm biến: chờ dữ liệu</div><div class="help">Uptime: <span id="uptime">—</span></div>
           <div id="yawReference" class="help" aria-live="polite">Tham chiếu Yaw: chờ dữ liệu la bàn.</div>
         </div>
@@ -364,8 +364,8 @@
       'dbgRollOutput','dbgPitchOutput','dbgYawOutput','dbgRollRpm','dbgPitchRpm','dbgYawRpm',
       'dbgRollWheelGains','dbgPitchWheelGains','dbgYawWheelGains',
       'dbgRollSafety','dbgPitchSafety','dbgYawSafety',
-      
-      
+
+
       'energyUsed','cameraState','gyroCalState','otherCalState','pidAllOn','pidAllOff'
     ].map(id=>[id,document.getElementById(id)]));
     let port=null, reader=null, reading=false, buffer='', yawOffset=0, latestYaw=0, logLines=[], accelCalActive=false;
@@ -630,6 +630,18 @@
         ui.calStoreState.textContent=calSave!==null&&calSave>1?'Calib mới chưa lưu được Flash (mã '+calSave+'); RAM vẫn dùng được.':(calSource==='FLASH'?'Đã lưu Flash · tự nạp lại khi khởi động.':'Đang dùng hệ số mặc định; calib đạt sẽ tự lưu.');
         if(calMeasured!==null)ui.calStoreState.textContent+=' Đã đo: '+['Accel','La bàn','Gyro'].filter((_,i)=>calMeasured&(1<<i)).join(' / ');
         ui.calStoreState.style.color=calSave!==null&&calSave>1?'var(--yellow)':'var(--muted)';
+      }
+      const installedEncoders=vec3(line,'ENC_INSTALLED3');
+      if(installedEncoders){
+        const names=['Roll','Pitch','Yaw'];
+        const counters=[ui.encRollCount,ui.encPitchCount,ui.encYawCount];
+        const rpms=[ui.encRollRpm,ui.encPitchRpm,ui.encYawRpm];
+        const debugRpms=[ui.dbgRollRpm,ui.dbgPitchRpm,ui.dbgYawRpm];
+        installedEncoders.forEach((present,i)=>{if(!present){counters[i].textContent='—';rpms[i].textContent='Chưa lắp';debugRpms[i].textContent='Chưa lắp encoder';}});
+        if(encoderCounts)ui.encoder.textContent=encoderCounts.map((v,i)=>installedEncoders[i]?v:'—').join(' / ');
+        const fittedFaults=vec3(line,'EF3');
+        const fittedFault=!!fittedFaults&&installedEncoders.some((present,i)=>present&&fittedFaults[i]);
+        setSensorState(ui.encoderState,!fittedFault,(fittedFault?'Fault encoder: ':'Đã lắp: ')+names.filter((_,i)=>installedEncoders[i]).join(', '));
       }
       updateFreshness();
     }

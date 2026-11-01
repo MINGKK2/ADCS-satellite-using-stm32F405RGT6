@@ -1,75 +1,88 @@
-# STM32F405 update through S3 → ESP-NOW → C3 → UART
+# C3/S3 radio-only telemetry bridge
 
-This adds an explicit update mode to both bridges. Existing viewer commands and telemetry remain text lines at 115200 8N1. The STM32 ROM protocol runs locally on C3 at 115200 **8E1** using USART1 PA9/PA10; radio delay is not inserted between individual ROM-protocol bytes.
+Current bridge firmware: **RADIO_ONLY_V1**, Arduino ESP32 core 3.3.3.
+This directory is the currently deployed telemetry bridge. The STM32 wireless
+updater, its ROM driver and host uploader were removed from the current tree;
+the historical implementation remains in Git history at commit `3405635`.
+Use USB DFU to program STM32.
 
-## Hardware and first installation
+## Wiring
 
-- STM32 PA9 TX → C3 GPIO20 RX; PA10 RX ← C3 GPIO21 TX; common GND, 3.3 V logic.
-- S3 computer USB: COM23 on this machine. Do not let viewer/Serial Monitor hold the COM port while uploading.
-- Install the new **C3 and S3 bridge firmware over their USB ports once**. Existing telemetry-only bridge firmware cannot install this feature over radio.
-- Current configuration uses the STM32 B0/Reset buttons manually. No unverified GPIO was assigned to BOOT0/NRST. STM32 USB is not part of the wireless transfer.
-- Keep motor power disconnected during bridge installation and STM32 programming. Staging also sends an explicit ESTOP.
+- STM32 PA9 / USART1 TX → C3 GPIO20 / UART0 RX.
+- STM32 PA10 / USART1 RX ← C3 GPIO21 / UART0 TX.
+- Common GND, 3.3 V logic, 115200 baud / 8N1 / no flow control.
+- C3 native USB is local diagnostics (COM34 on the deployment PC).
+- S3 USB-to-serial is the viewer port (COM23 on that PC).
+- UART0 is the only telemetry source. Legacy ground-command mirroring to UART1
+  is retained, but do not connect a second STM32 telemetry UART.
 
-Arduino ESP32 core used: 3.3.3. Build examples (Arduino CLI):
+Paired STA MACs: C3 `B0:A6:04:40:C2:74`, S3 `DC:B4:D9:0B:64:3C`, channel 1.
+Both set retained `WiFi.setSleep(false)` before STA startup, then PS=NONE.
+C3 TX power is 34 quarter-dBm = 8.5 dBm, the setting measured to work on this
+bench. This is not a general maximum-range recommendation. The link uses a
+paired-MAC filter and CRC, not cryptographic authentication.
 
-```powershell
-arduino-cli compile --jobs 2 --fqbn "esp32:esp32:esp32c3:CDCOnBoot=cdc,FlashSize=4M,PartitionScheme=default,UploadSpeed=115200" --build-path build-c3 esp32c3_uart_bridge
-arduino-cli compile --jobs 2 --fqbn "esp32:esp32:esp32s3:USBMode=hwcdc,CDCOnBoot=default,UploadMode=default,FlashMode=qio,FlashSize=16M,PartitionScheme=fatflash,PSRAM=opi,UploadSpeed=115200" --build-path build-s3 esp32s3_ground_station
-```
-
-The S3 options match the previously built board. Confirm C3 chip/flash size and USB port before uploading; do not assume every COM port is the C3. Paired Wi-Fi addresses remain in the sketches; compare with the actual boards if changing hardware.
-
-## Update procedure
-
-Install host dependency: `python -m pip install -r requirements.txt`. Convert the linked ELF with `arm-none-eabi-objcopy -O binary firmware.elf firmware.bin`; the application remains linked at 0x08000000.
-
-```powershell
-python s3_updater.py --port COM23 --ping
-python s3_updater.py --port COM23 --image firmware.bin --stage-only --motor-power-off
-```
-
-C3 receives the **whole image into its filesystem** before any STM32 erase. File size, CRC32, initial stack pointer and reset-vector address are checked. The filesystem is the C3 data partition, not STM32 Flash.
-
-Then enter STM32 system bootloader with B0/Reset and release B0. Keep C3/S3 powered; do not reset C3 after staging because its in-RAM staging state would be lost. Run:
+## Build
 
 ```powershell
-python s3_updater.py --port COM23 --image firmware.bin --flash-staged --bootloader-ready --motor-power-off --log-dir deployment
+arduino-cli compile --jobs 2 --fqbn "esp32:esp32:esp32c3:CDCOnBoot=cdc,FlashSize=4M,PartitionScheme=default,UploadSpeed=115200" --build-path radio/build-c3 radio/esp32c3_uart_bridge
+arduino-cli compile --jobs 2 --fqbn "esp32:esp32:esp32s3:USBMode=hwcdc,CDCOnBoot=default,UploadMode=default,FlashMode=qio,FlashSize=16M,PartitionScheme=fatflash,PSRAM=opi,UploadSpeed=115200" --build-path radio/build-s3 radio/esp32s3_ground_station
 ```
 
-The host verifies that the staged file matches, C3 probes PID 0x413 and 1024 KiB Flash, hashes all 128 KiB of calibration sector 11, erases only application sectors, writes/verifies every block, compares the calibration SHA-256 again, then issues GO. C3 restores UART 8N1. The host checks for fast telemetry and `FW=MANUAL_PID_V1`; it never arms PID.
+These options match the actual boards used. Verify chip/flash/port before
+uploading; keep motor power off. Close applications holding the upload COM.
+There is no wireless STM32 update command in these sketches.
 
-The existing local DFU backup retains the actual calibration bytes. The wireless updater checks the entire sector before/after and does not upload raw calibration contents to Git.
+## Data and recovery behavior
 
-## Protocol and failure behavior
+Existing version-1 212-byte packet layout, 12-byte header, payload up to 200,
+CRC16-CCITT. Type 1 carries UART0 data; type 2 carries ground commands.
+Send callbacks pace one packet in flight. C3 has an 8192-byte UART0 RX buffer,
+SDK UART logging disabled, verbose USB mirroring disabled, and bounded USB debug
+chunks. UART/radio forwarding does not wait for a debug reader.
 
-- Radio requests/responses use new packet types 0x40/0x41 inside the existing CRC16 envelope.
-- USB update line: `@FW <session> <request-id> <operation> <hex-payload-or-dash>`.
-- Reply: `@FWACK <session> <request-id> <operation> <status> <hex-data>`; progress uses `@FWPROGRESS`.
-- Stop-and-wait requests retry with **the same id and bytes**. C3 caches the last response and rejects old or changed-payload requests; a lost ACK does not append a chunk or erase Flash twice.
-- ROM commands exposed: GET, GET ID, READ, WRITE, sector ERASE/EXTENDED ERASE and GO. No mass erase, readout unprotect, write unprotect, or option-byte writes.
-- Maximum image 896 KiB, sector 11 never erased/written. Wrong vector, wrong MCU/Flash size, timeout, NACK, readback mismatch or calibration mismatch prevents GO.
-- If power fails after erase, the old application may no longer run. The ST ROM bootloader remains the recovery path; enter B0/Reset and retry or use USB DFU. This is not a dual-bank atomic update.
-- CRC/checksums detect transfer corruption; the paired-MAC ESP-NOW link is not cryptographic firmware authentication. This bench updater has no signed-image/secure-update mechanism.
+S3 validates paired peer/CRC, assembles complete newline-delimited STM32 records
+and writes USB in available-size chunks. Duplicate/reordered packets are rejected;
+a missing fragment discards the partial line and resynchronizes at newline.
+Overlong lines are discarded rather than emitted as misleading mixed records.
+ACK/NACK/calibration records are prioritized between whole USB lines. Explicit
+ESTOP supersedes unsent ordinary commands and is prioritized on C3 as well.
 
-## Tests and verification scope
+Send `@LINKSTAT` + newline to S3 for local `S3STAT` counters; this diagnostic is
+not forwarded to STM32. Native C3 USB reports `C3STAT` periodically. Counters
+include CRC errors, MAC ACK/failure, queue drops and fragment gaps. Compare
+counter deltas; a C3 reset during S3 operation can leave a historical gap count.
 
-`tests/test-rom.cpp` compiles the actual ROM driver with a scripted UART. It checks sync/parity, ID/size responses, ACK/NACK/timeouts, sector-list encoding, protected-sector/address/alignment guards, CRC/vector checks and duplicate-request handling. `tests/test-host.py` checks host retry identity, session matching and image guards.
+## Host regression test
 
-Build success and these tests do not prove a wireless hardware transfer. Record an actual `deployment.json` only after readback and calibration comparison succeed; report separately whether post-GO telemetry and motor/attitude operation were tested.
+From repository root, with a C++17 compiler on PATH:
 
-## Radio issues verified during commissioning
+```powershell
+g++ -std=c++17 -O2 -Wall -Wextra -Werror -Iradio/tests radio/tests/test-radio.cpp -o radio/tests/test-radio.exe
+.\radio\tests\test-radio.exe
+```
 
-Both peers use Wi-Fi channel 1, with Arduino `WiFi.setSleep(false)` set **before** `WiFi.mode(WIFI_STA)`. The 3.3.3 STA_START handler reapplies `WiFi.getSleep()`; a low-level `esp_wifi_set_ps(NONE)` alone was overwritten (measured PS=1). The retained policy now yields PS=0 on both.
+This compiles the actual packet/line-assembly code. It tests CRC/layout, payload
+fragment sizes 1..200, loss/duplicates/reordering, restart, sequence wrap and
+oversized-line recovery. It does not simulate the RF or power supply.
 
-On the connected C3, default/high TX power delivered no return ACK even though C3 received valid S3 requests. Limiting C3 to 34 quarter-dBm (8.5 dBm) changed the measured result to 2909 MAC ACKs / 0 failures and a successful bidirectional updater PING; RSSI was -38 dBm. This is a measured bench setting for this hardware, not a range guarantee.
+## Hardware evidence and limitations
 
-C3 sends one packet at a time, paced by the ESP-NOW send callback. Main-task update replies have priority and bounded retries; normal telemetry cannot flood the TX pool. SDK logging is silenced on UART0, and bulk USB debug is off by default. USB diagnostics have zero TX timeout and report `C3STAT` every two seconds when the host can accept them.
+Both ESPs were flashed and their data hashes verified. Before STM32 V4 deployment,
+S3 received 480 fast records in 25 seconds (~19.17 Hz), with two STM32 STATUS
+ACKs, no fast-sequence gaps or new radio fragment gaps. Another 12-second capture
+with COM34 closed still returned 230 fast records and two STATUS ACKs.
+Final C3 diagnostics measured CH=1, PS=0, power=34 quarter-dBm, TXACK increasing
+641→1253 with TXFAIL=0. Source-side STM32 latest-sample coalescing can still skip
+fast sequence numbers; this is distinct from RF fragment loss.
 
-S3 local diagnostic command `@FWSTAT` reports the actual MAC, channel, PS state and RX/TX counters. Updater control replies are separated by CRLF; the host also resynchronizes at the control marker if an older transparent fragment precedes it. No serial monitor may hold COM23 while the uploader runs.
+Physically unplugging C3 USB while powering it from STM32 then caused zero radio
+telemetry and failed MAC ACKs for 30 seconds. The operator later reported recovery
+and the viewer confirmed fresh valid attitude/ACK/RPM, but the recovered C3 power
+arrangement was not confirmed. LED illumination does not measure rail stability.
+For a separate-power check, disconnect the STM32-to-C3 VCC feed before powering
+C3 from a USB charger/powerbank; retain common GND and both UART wires.
 
-
-## ROM probe diagnostics
-
-Probe failures report `STAGE`, the last ACK byte as decimal (`-1` means timeout), received-byte count, observed chip ID and Flash size. They never erase or write STM32 Flash. A `SYNC` response other than `0x79` alone does not identify the cause; check whether ordinary 115200 8N1 telemetry still comes from the old application before asking for boot entry again.
-
-On the current bench, after the failed ROM probe, returning to normal UART produced 97 valid fast frames in five seconds (`PID=0,0,0`, `PWM3=0,0,0`, `ESTOP=1`). The old application was still running; this is not a completed update. The image remains staged and verified, awaiting effective STM32 BOOT0 entry. USB C3/S3 firmware uploads and a sealed image do not prove STM32 programming.
+After STM32 V4 was flashed, COM23 again returned only S3 local counters and no
+STM32 STATUS ACK during the 12-second check. Therefore this publication does not
+claim that the current end-to-end link or ADCS response has passed a final test.

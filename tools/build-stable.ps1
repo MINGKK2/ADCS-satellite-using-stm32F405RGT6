@@ -16,5 +16,12 @@ try {
   $output | Where-Object {$_ -match '(warning:|error:|undefined reference|Finished building|text\s+data|\sSTM32CubeIDE.elf\s*$)'}
   if($result -ne 0){$output;throw "Build exit code $result"}
   if($output -match 'warning:|error:'){throw 'Build contains warnings/errors'}
+  # CubeIDE's generated makefile only emits ELF/list/size for this project.
+  # Regenerate flashable images so an older BIN/HEX cannot survive a rebuild.
+  $objcopy=Join-Path $ToolchainBin 'arm-none-eabi-objcopy.exe'
+  & $objcopy -O binary STM32CubeIDE.elf STM32CubeIDE.bin
+  if($LASTEXITCODE -ne 0){throw 'BIN generation failed'}
+  & $objcopy -O ihex STM32CubeIDE.elf STM32CubeIDE.hex
+  if($LASTEXITCODE -ne 0){throw 'HEX generation failed'}
   'FULL_BUILD_OK'
 }finally{Pop-Location;$env:Path=$savedPath}

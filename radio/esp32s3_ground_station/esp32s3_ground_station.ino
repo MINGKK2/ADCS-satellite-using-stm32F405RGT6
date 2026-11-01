@@ -2,137 +2,110 @@
 #include <esp_now.h>
 #include <esp_wifi.h>
 #include <esp_log.h>
-
+#include <ctype.h>
 #include "telemetry_protocol.h"
-#include "update_wire.h"
-
-static constexpr uint8_t ESPNOW_CHANNEL = 1;
-// Only STM32 on C3 UART0 (GPIO20 RX / GPIO21 TX) is the telemetry source.
-static constexpr uint8_t PRIMARY_TELEMETRY_TYPE = TYPE_UART0_TO_GROUND;
-static constexpr uint32_t USB_BATCH_TIMEOUT_US = 3000;
-// ESP32-C3 Wi-Fi STA MAC (paired bridge): b0:a6:04:40:c2:74
-static const uint8_t C3_ADDRESS[6] = {
-    0xB0, 0xA6, 0x04, 0x40, 0xC2, 0x74};
-
-QueueHandle_t telemetryQueue = nullptr;
-uint32_t commandSequence = 0;
-volatile uint32_t radioRx=0,radioMatched=0,radioBad=0,radioTxAck=0,radioTxFail=0;
-esp_err_t lastSendError=ESP_OK;
-void onEspNowSend(const esp_now_send_info_t *,esp_now_send_status_t status){
-  if(status==ESP_NOW_SEND_SUCCESS)radioTxAck=radioTxAck+1;else radioTxFail=radioTxFail+1;
+#include "line_assembler.h"
+static constexpr uint8_t CHANNEL=1;
+static const uint8_t C3_MAC[6]={0xB0,0xA6,0x04,0x40,0xC2,0x74};
+struct UsbLine {uint16_t length;char data[1024];};
+QueueHandle_t rxQueue,commandQueue,usbQueue,controlQueue;
+RadioLineAssembler assembler;
+volatile bool radioBusy=false;
+volatile uint32_t radioRx=0,radioPeer=0,radioBad=0,rxDrops=0,txAck=0,txFail=0;
+uint32_t commandSequence=0,sendErrors=0,lineDrops=0,commandDrops=0,usbBytes=0;
+bool statPending=false;
+void onSend(const esp_now_send_info_t *,esp_now_send_status_t status){
+  if(status==ESP_NOW_SEND_SUCCESS)txAck=txAck+1;else txFail=txFail+1;
+  radioBusy=false;
 }
-
-struct ReceivedPacket {
-  size_t size;
-  TelemetryPacket packet;
-};
-
-void onEspNowReceive(const esp_now_recv_info_t *info, const uint8_t *data, int length) {
+void onReceive(const esp_now_recv_info_t *info,const uint8_t *bytes,int length){
   radioRx=radioRx+1;
-  if(!info || memcmp(info->src_addr,C3_ADDRESS,6))return;
-  radioMatched=radioMatched+1;
-  if (length < 0 || static_cast<size_t>(length) > sizeof(TelemetryPacket)) {
-    return;
-  }
-
-  ReceivedPacket item{};
-  item.size = static_cast<size_t>(length);
-  memcpy(&item.packet, data, item.size);
-  if(!packetIsValid(item.packet,item.size)){radioBad=radioBad+1;return;}
-  if (packetIsValid(item.packet, item.size) &&
-      (item.packet.type == PRIMARY_TELEMETRY_TYPE || item.packet.type == TYPE_UPDATE_RESPONSE)) {
-    xQueueSend(telemetryQueue, &item, 0);
-  }
+  if(!info || memcmp(info->src_addr,C3_MAC,6))return;
+  radioPeer=radioPeer+1;
+  if(length<(int)TELEMETRY_HEADER_SIZE || length>(int)sizeof(TelemetryPacket)){radioBad=radioBad+1;return;}
+  TelemetryPacket p{};memcpy(&p,bytes,(size_t)length);
+  if(!packetIsValid(p,(size_t)length)){radioBad=radioBad+1;return;}
+  if(p.type==TYPE_UART0_TO_GROUND && xQueueSend(rxQueue,&p,0)!=pdTRUE)rxDrops=rxDrops+1;
 }
-
-bool startRadio() {
-  // Keep the Arduino STA_START event from restoring MIN_MODEM later.
-  WiFi.setSleep(false);
-  WiFi.setAutoReconnect(false);
-  WiFi.mode(WIFI_STA);
-  WiFi.disconnect();
-  if (esp_wifi_set_channel(ESPNOW_CHANNEL, WIFI_SECOND_CHAN_NONE) != ESP_OK ||
-      esp_now_init() != ESP_OK) {
-    return false;
-  }
-
-  esp_now_peer_info_t peer{};
-  memcpy(peer.peer_addr, C3_ADDRESS, sizeof(C3_ADDRESS));
-  peer.channel = ESPNOW_CHANNEL;
-  peer.ifidx = WIFI_IF_STA;
-  peer.encrypt = false;
-  if (esp_now_add_peer(&peer) != ESP_OK) {
-    return false;
-  }
-  if(esp_wifi_set_ps(WIFI_PS_NONE)!=ESP_OK || esp_now_register_send_cb(onEspNowSend)!=ESP_OK)return false;
-  return esp_now_register_recv_cb(onEspNowReceive) == ESP_OK;
+bool startRadio(){
+  // Retained Arduino policy must precede the asynchronous STA_START event.
+  WiFi.setSleep(false);WiFi.setAutoReconnect(false);WiFi.mode(WIFI_STA);WiFi.disconnect();
+  if(esp_wifi_set_channel(CHANNEL,WIFI_SECOND_CHAN_NONE)!=ESP_OK || esp_wifi_set_ps(WIFI_PS_NONE)!=ESP_OK)return false;
+  if(esp_now_init()!=ESP_OK)return false;
+  esp_now_peer_info_t p{};memcpy(p.peer_addr,C3_MAC,6);p.channel=CHANNEL;p.ifidx=WIFI_IF_STA;p.encrypt=false;
+  return esp_now_add_peer(&p)==ESP_OK && esp_now_register_send_cb(onSend)==ESP_OK && esp_now_register_recv_cb(onReceive)==ESP_OK;
 }
-
-void writeTelemetryToUsb() {
-  ReceivedPacket item{};
-  while (xQueueReceive(telemetryQueue, &item, 0) == pdTRUE) {
-    // Transparent output for Web Serial/attitude-viewer: never add labels,
-    // delimiters or debug text to the STM32 byte stream.
-    if(item.packet.type==TYPE_UPDATE_RESPONSE){
-      if(item.packet.length<6)continue;
-      const uint8_t *v=item.packet.payload;
-      Serial.printf("\r\n%s %lu %lu %u %u ",v[1]==FW_PROGRESS?"@FWPROGRESS":"@FWACK",(unsigned long)wire32(v+2),(unsigned long)item.packet.sequence,v[0],v[1]);
-      for(size_t i=6;i<item.packet.length;i++)Serial.printf("%02X",v[i]);
-      Serial.print("\r\n");
-    }else Serial.write(item.packet.payload, item.packet.length);
-  }
+bool queueLine(const char *data,size_t size,bool priority){
+  if(!size || size>sizeof(UsbLine::data)){lineDrops++;return false;}
+  UsbLine line{};line.length=(uint16_t)size;memcpy(line.data,data,size);
+  if(xQueueSend(priority?controlQueue:usbQueue,&line,0)!=pdTRUE){lineDrops++;return false;}
+  return true;
 }
-
-static int hexNibble(char c){if(c>='0'&&c<='9')return c-'0';if(c>='A'&&c<='F')return c-'A'+10;if(c>='a'&&c<='f')return c-'a'+10;return -1;}
-static void hostLine(char *line,size_t length){
-  if(!strcmp(line,"@FWSTAT")){
-    uint8_t channel=0;wifi_second_chan_t second;wifi_ps_type_t ps;esp_wifi_get_channel(&channel,&second);esp_wifi_get_ps(&ps);
-    Serial.printf("\r\n@FWSTAT FW=S3_UPDATER_V2 MAC=%s CH=%u PS=%u RX=%lu MATCH=%lu BAD=%lu TXACK=%lu TXFAIL=%lu SENDERR=%ld\r\n",WiFi.macAddress().c_str(),channel,(unsigned)ps,(unsigned long)radioRx,(unsigned long)radioMatched,(unsigned long)radioBad,(unsigned long)radioTxAck,(unsigned long)radioTxFail,(long)lastSendError);return;
-  }
-  TelemetryPacket packet{};packet.magic=TELEMETRY_MAGIC;packet.version=TELEMETRY_VERSION;
-  if(!strncmp(line,"@FW ",4)){
-    unsigned long session=0,seq=0;unsigned op=0;int consumed=0;
-    if(sscanf(line,"@FW %lu %lu %u %n",&session,&seq,&op,&consumed)!=3 || !session || !seq || op>255 || consumed<=0){Serial.println("@FWERR HOST_HEADER");return;}
-    const char *hex=line+consumed;size_t digits=strlen(hex);
-    if(digits==1 && hex[0]=='-')digits=0;
-    if((digits&1U) || digits/2>TELEMETRY_MAX_PAYLOAD-5){Serial.println("@FWERR HOST_LENGTH");return;}
-    packet.type=TYPE_UPDATE_REQUEST;packet.sequence=(uint32_t)seq;packet.payload[0]=(uint8_t)op;put32(packet.payload+1,(uint32_t)session);
-    packet.length=(uint16_t)(5+digits/2);
-    for(size_t i=0;i<digits/2;i++){int hi=hexNibble(hex[2*i]),lo=hexNibble(hex[2*i+1]);if(hi<0||lo<0){Serial.println("@FWERR HOST_HEX");return;}packet.payload[5+i]=(uint8_t)((hi<<4)|lo);}
-  }else{
-    if(!length || length+1>TELEMETRY_MAX_PAYLOAD)return;
-    packet.type=TYPE_GROUND_TO_UARTS;packet.sequence=commandSequence++;packet.length=(uint16_t)(length+1);
-    memcpy(packet.payload,line,length);packet.payload[length]='\n';
-  }
-  packet.crc=packetCrc(packet);
-  lastSendError=esp_now_send(C3_ADDRESS,reinterpret_cast<uint8_t *>(&packet),TELEMETRY_HEADER_SIZE+packet.length);
+void handleLine(char *data,size_t length){
+  char upper[200];for(size_t i=0;i<=length;i++)upper[i]=(char)toupper((unsigned char)data[i]);
+  if(!strcmp(upper,"@LINKSTAT")){statPending=true;return;}
+  TelemetryPacket p{};p.magic=TELEMETRY_MAGIC;p.version=TELEMETRY_VERSION;p.type=TYPE_GROUND_TO_UARTS;
+  p.sequence=commandSequence++;p.length=(uint16_t)(length+1);memcpy(p.payload,data,length);p.payload[length]='\n';p.crc=packetCrc(p);
+  if(!strcmp(upper,"ESTOP") || !strcmp(upper,"EMERGENCY_STOP")){
+    // Explicit stop supersedes older commands that have not been sent yet.
+    xQueueReset(commandQueue);
+    if(xQueueSendToFront(commandQueue,&p,0)!=pdTRUE)commandDrops++;
+  }else if(xQueueSend(commandQueue,&p,0)!=pdTRUE)commandDrops++;
 }
-void sendUsbCommands(){
-  static char line[512];static size_t length=0;static bool discard=false;
+void readCommands(){
+  static char data[200];static size_t used=0;static bool discard=false;
   while(Serial.available()){
     char c=(char)Serial.read();
     if(c=='\r')continue;
-    if(c=='\n'){if(!discard && length){line[length]=0;hostLine(line,length);}length=0;discard=false;continue;}
+    if(c=='\n'){if(!discard && used){data[used]=0;handleLine(data,used);}used=0;discard=false;continue;}
     if(discard)continue;
-    if((uint8_t)c<32 || (uint8_t)c>126 || length>=sizeof(line)-1){discard=true;length=0;continue;}
-    line[length++]=c;
+    if((uint8_t)c<32 || (uint8_t)c>126 || used>=sizeof(data)-2U){used=0;discard=true;commandDrops++;continue;}
+    data[used++]=c;
   }
 }
-
-void setup() {
-  Serial.begin(115200);
+void sendCommands(){
+  if(radioBusy)return;
+  TelemetryPacket p{};if(xQueueReceive(commandQueue,&p,0)!=pdTRUE)return;
+  radioBusy=true;
+  if(esp_now_send(C3_MAC,reinterpret_cast<const uint8_t *>(&p),TELEMETRY_HEADER_SIZE+p.length)!=ESP_OK){radioBusy=false;sendErrors++;}
+}
+void readRadio(){
+  TelemetryPacket p{};
+  while(xQueueReceive(rxQueue,&p,0)==pdTRUE){
+    assembler.packet(p.sequence,p.payload,p.length,[](const char *data,size_t size){
+      bool priority=(size>=4&&!memcmp(data,"ACK ",4)) || (size>=5&&!memcmp(data,"NACK ",5)) || (size>=4&&!memcmp(data,"CAL ",4));
+      queueLine(data,size,priority);
+    });
+  }
+}
+void reportStats(){
+  if(!statPending || uxQueueSpacesAvailable(controlQueue)==0)return;
+  uint8_t channel=0;wifi_second_chan_t secondary;wifi_ps_type_t ps;
+  esp_wifi_get_channel(&channel,&secondary);esp_wifi_get_ps(&ps);
+  char line[384];int n=snprintf(line,sizeof(line),
+      "S3STAT FW=RADIO_ONLY_V1 MAC=%s CH=%u PS=%u RX=%lu MATCH=%lu BAD=%lu QDROP=%lu TXACK=%lu TXFAIL=%lu SENDERR=%lu GAPS=%lu DUP=%lu OLD=%lu LONG=%lu LINE_DROP=%lu CMD_DROP=%lu USB_BYTES=%lu\r\n",
+      WiFi.macAddress().c_str(),channel,(unsigned)ps,(unsigned long)radioRx,(unsigned long)radioPeer,(unsigned long)radioBad,(unsigned long)rxDrops,
+      (unsigned long)txAck,(unsigned long)txFail,(unsigned long)sendErrors,(unsigned long)assembler.gaps,(unsigned long)assembler.duplicates,
+      (unsigned long)assembler.reordered,(unsigned long)assembler.overlong,(unsigned long)lineDrops,(unsigned long)commandDrops,(unsigned long)usbBytes);
+  if(n>0 && (size_t)n<sizeof(line) && queueLine(line,(size_t)n,true))statPending=false;
+}
+void writeUsb(){
+  static UsbLine current{};static size_t offset=0;
+  if(offset==current.length){
+    if(xQueueReceive(controlQueue,&current,0)!=pdTRUE && xQueueReceive(usbQueue,&current,0)!=pdTRUE)return;
+    offset=0;
+  }
+  int room=Serial.availableForWrite();if(room<=0)return;
+  size_t remaining=current.length-offset,n=remaining<(size_t)room?remaining:(size_t)room;
+  size_t sent=Serial.write(reinterpret_cast<const uint8_t *>(current.data)+offset,n);offset+=sent;usbBytes+=(uint32_t)sent;
+}
+void setup(){
+  Serial.setRxBufferSize(4096);Serial.setTxBufferSize(4096);Serial.begin(115200);
   esp_log_level_set("*",ESP_LOG_NONE);
-  telemetryQueue = xQueueCreate(16, sizeof(ReceivedPacket));
-  if (telemetryQueue == nullptr || !startRadio()) {
-    Serial.println("FATAL: telemetry radio initialization failed");
-    while (true) {
-      delay(1000);
-    }
+  rxQueue=xQueueCreate(32,sizeof(TelemetryPacket));commandQueue=xQueueCreate(16,sizeof(TelemetryPacket));
+  usbQueue=xQueueCreate(16,sizeof(UsbLine));controlQueue=xQueueCreate(8,sizeof(UsbLine));
+  if(!rxQueue || !commandQueue || !usbQueue || !controlQueue || !startRadio()){
+    Serial.println("FATAL: telemetry radio initialization failed");while(true)delay(1000);
   }
 }
-
-void loop() {
-  writeTelemetryToUsb();
-  sendUsbCommands();
-  delay(1);
-}
+void loop(){readCommands();sendCommands();readRadio();reportStats();writeUsb();delay(1);}

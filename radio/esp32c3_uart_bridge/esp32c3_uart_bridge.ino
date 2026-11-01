@@ -22,9 +22,8 @@ static const uint8_t S3_ADDRESS[6] = {
 
 HardwareSerial TelemetryUart0(0);
 HardwareSerial TelemetryUart1(1);
-#include "firmware_updater.h"
-FirmwareUpdater updater(TelemetryUart0,S3_ADDRESS);
 QueueHandle_t downlinkQueue = nullptr;
+volatile bool emergencyPending=false;
 uint32_t uart0Sequence = 0;
 uint32_t uart1Sequence = 0;
 uint32_t usbSequence = 0;
@@ -33,7 +32,7 @@ uint32_t uart1ByteCount = 0;
 uint32_t uart0PacketCount = 0;
 uint32_t uart1PacketCount = 0;
 uint32_t sendErrorCount = 0;
-volatile uint32_t radioRx=0,radioPeerRx=0,radioBadFrame=0,radioUpdateRx=0,radioTxAck=0,radioTxNoAck=0;
+volatile uint32_t radioRx=0,radioPeerRx=0,radioBadFrame=0,radioTxAck=0,radioTxNoAck=0;
 volatile bool radioTxBusy=false;
 volatile esp_now_send_status_t radioLastStatus=ESP_NOW_SEND_FAIL;
 volatile int8_t lastRssi=-127;
@@ -48,18 +47,6 @@ static esp_err_t radioSend(const uint8_t *address,const uint8_t *data,size_t siz
   esp_err_t status=esp_now_send(address,data,size);
   if(status!=ESP_OK){radioTxBusy=false;sendErrorCount++;}
   return status;
-}
-bool FirmwareUpdaterTransport_Send(const uint8_t *address,const uint8_t *data,size_t size){
-  // Main-task only. Respect the send callback; never flood the Wi-Fi TX pool.
-  for(unsigned attempt=0;attempt<3;attempt++){
-    uint32_t start=millis();while(radioTxBusy && millis()-start<300)delay(1);
-    if(radioTxBusy)return false;
-    if(radioSend(address,data,size)!=ESP_OK){delay(5);continue;}
-    start=millis();while(radioTxBusy && millis()-start<300)delay(1);
-    if(!radioTxBusy && radioLastStatus==ESP_NOW_SEND_SUCCESS)return true;
-    delay(5);
-  }
-  return false;
 }
 
 struct ReceivedPacket {
@@ -80,10 +67,12 @@ void onEspNowReceive(const esp_now_recv_info_t *info, const uint8_t *data, int l
   item.size = static_cast<size_t>(length);
   memcpy(&item.packet, data, item.size);
   if(!packetIsValid(item.packet,item.size)){radioBadFrame=radioBadFrame+1;return;}
-  if(item.packet.type==TYPE_UPDATE_REQUEST)radioUpdateRx=radioUpdateRx+1;
   if (packetIsValid(item.packet, item.size) &&
-      (item.packet.type == TYPE_GROUND_TO_UARTS || item.packet.type == TYPE_UPDATE_REQUEST)) {
-    xQueueSend(downlinkQueue, &item, 0);
+      item.packet.type == TYPE_GROUND_TO_UARTS) {
+    if ((item.packet.length==6 && !memcmp(item.packet.payload,"ESTOP\n",6))
+        || (item.packet.length==15 && !memcmp(item.packet.payload,"EMERGENCY_STOP\n",15))) {
+      xQueueReset(downlinkQueue);emergencyPending=true;
+    } else xQueueSend(downlinkQueue,&item,0);
   }
 }
 
@@ -151,10 +140,13 @@ void sendUartBatch(HardwareSerial &port, uint8_t packetType,
 }
 
 void writeCommandsToUarts() {
+  if(emergencyPending){
+    emergencyPending=false;
+    const uint8_t stop[]="\r\nESTOP\r\n";
+    TelemetryUart0.write(stop,sizeof(stop)-1);TelemetryUart1.write(stop,sizeof(stop)-1);
+  }
   ReceivedPacket item{};
   while (xQueueReceive(downlinkQueue, &item, 0) == pdTRUE) {
-    if(item.packet.type==TYPE_UPDATE_REQUEST){updater.handle(item.packet);continue;}
-    if(updater.busy())continue;
     if(USB_VERBOSE){Serial.print("[S3 -> C3 UART0+UART1] ");Serial.write(item.packet.payload, item.packet.length);Serial.println();}
     // Ground commands are mirrored to both physical UART ports.
     TelemetryUart0.write(item.packet.payload, item.packet.length);
@@ -188,7 +180,6 @@ void forwardUsbInput() {
   TelemetryUart0.write(packet.payload, packet.length);
   TelemetryUart1.write(packet.payload, packet.length);
   packet.crc = packetCrc(packet);
-  (void)radioSend(S3_ADDRESS,reinterpret_cast<uint8_t *>(&packet),TELEMETRY_HEADER_SIZE+packet.length);
   if(USB_VERBOSE){Serial.print("[C3 USB -> UART0+UART1+S3] ");Serial.write(packet.payload, packet.length);Serial.println();}
 }
 
@@ -213,27 +204,33 @@ void setup() {
       delay(1000);
     }
   }
-  Serial.println("ESP32-C3 telemetry + STM32 wireless updater V1 ready");
+  Serial.println("ESP32-C3 telemetry radio V1 ready");
 }
 
 void loop() {
   writeCommandsToUarts();
   static uint32_t diagTick=0;
-  if(Serial && Serial.availableForWrite()>220 && millis()-diagTick>=2000){
+  static char diag[384];static size_t diagSize=0,diagOffset=0;
+  if(!Serial){diagSize=0;diagOffset=0;}
+  if(Serial && diagOffset==diagSize && millis()-diagTick>=2000){
     diagTick=millis();uint8_t channel=0;wifi_second_chan_t second;wifi_ps_type_t ps;int8_t power=0;esp_wifi_get_channel(&channel,&second);esp_wifi_get_ps(&ps);esp_wifi_get_max_tx_power(&power);
-    Serial.printf("C3STAT FW=UPDATER_V1 MAC=%s CH=%u PS=%u PWR_qdbm=%d RSSI=%d RX=%lu PEER=%lu BAD=%lu UPDATE=%lu TXACK=%lu TXFAIL=%lu SENDERR=%lu BUSY=%u U0=%lu\r\n",WiFi.macAddress().c_str(),channel,(unsigned)ps,(int)power,(int)lastRssi,(unsigned long)radioRx,(unsigned long)radioPeerRx,(unsigned long)radioBadFrame,(unsigned long)radioUpdateRx,(unsigned long)radioTxAck,(unsigned long)radioTxNoAck,(unsigned long)sendErrorCount,updater.busy(),(unsigned long)uart0ByteCount);
+    int n=snprintf(diag,sizeof(diag),"C3STAT FW=RADIO_ONLY_V1 MAC=%s CH=%u PS=%u PWR_qdbm=%d RSSI=%d RX=%lu PEER=%lu BAD=%lu TXACK=%lu TXFAIL=%lu SENDERR=%lu BUSY=%u U0=%lu\r\n",WiFi.macAddress().c_str(),channel,(unsigned)ps,(int)power,(int)lastRssi,(unsigned long)radioRx,(unsigned long)radioPeerRx,(unsigned long)radioBadFrame,(unsigned long)radioTxAck,(unsigned long)radioTxNoAck,(unsigned long)sendErrorCount,radioTxBusy,(unsigned long)uart0ByteCount);
+    diagOffset=0;diagSize=(n>0 && (size_t)n<sizeof(diag))?(size_t)n:0;
   }
-  if (!updater.busy() && !radioTxBusy && TelemetryUart0.available()) {
+  // Native USB can have far less than a full record free. Send bounded chunks;
+  // a closed or unread debug port must never gate UART0/radio forwarding.
+  if(diagOffset<diagSize){
+    int room=Serial.availableForWrite();
+    if(room>0){size_t n=diagSize-diagOffset;if(n>(size_t)room)n=(size_t)room;
+      diagOffset+=Serial.write((const uint8_t *)diag+diagOffset,n);}
+  }
+  if (!radioTxBusy && TelemetryUart0.available()) {
     if(USB_VERBOSE)Serial.print("[C3 UART0 -> S3] ");
     sendUartBatch(TelemetryUart0, TYPE_UART0_TO_GROUND,
                   uart0Sequence, uart0ByteCount, uart0PacketCount);
   }
-  if (!updater.busy() && !radioTxBusy && TelemetryUart1.available()) {
-    if(USB_VERBOSE)Serial.print("[C3 UART1 -> S3] ");
-    sendUartBatch(TelemetryUart1, TYPE_UART1_TO_GROUND,
-                  uart1Sequence, uart1ByteCount, uart1PacketCount);
-  }
-  if(!updater.busy())forwardUsbInput();
+  // Only UART0 is a telemetry source; UART1 is not forwarded over radio.
+  forwardUsbInput();
   writeCommandsToUarts();
   delay(1);
 }

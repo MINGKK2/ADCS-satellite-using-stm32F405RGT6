@@ -103,9 +103,9 @@ static void test_compass_dropout(void){
   assert(pid_enabled[2] && fusion_status==HAL_OK && fabsf(attitude_ekf.yaw_deg-45)<.1f);
   Magnetometer_ProcessSample(HAL_OK,10000,0,0);
   assert(mag_reject_reason==1 && pid_enabled[2] && fusion_status==HAL_OK);
-  Magnetometer_ProcessSample(HAL_OK,-566,566,600);
+  Magnetometer_ProcessSample(HAL_OK,-566,-566,600);
   assert(mag_reject_reason==3 && fabsf(mag_innovation_deg)>100 && pid_enabled[2]);
-  Magnetometer_ProcessSample(HAL_OK,566,-566,600);
+  Magnetometer_ProcessSample(HAL_OK,566,566,600);
   assert(mag_status==HAL_OK && mag_reject_reason==0 && pid_enabled[2] && fusion_status==HAL_OK);
   assert(fabsf(attitude_ekf.yaw_deg-45)<.1f && control.setpoint_deg==45);
   puts("PASS actual 6s compass I2C dropout, rejected norm/heading and recovery: PID stays enabled, IMU runs, angle/target retained");
@@ -137,4 +137,59 @@ static void test_operator_authority(void){
   assert(ControlTiming_Accept(5,84)&&!control_timing_paused&&pid_enabled[2]);
   puts("PASS timing pause/recovery and tick wrap: 25ms does not reinitialize EKF, >100ms requests recovery but never clears operator PID");
 }
-int main(void){test_geometry();test_pid();test_encoder();test_accel_covariance();test_fusion();test_compass_dropout();test_operator_authority();}
+static void test_autonomous_hold(void){
+  control_targets_initialized=1;control_timing_paused=0;
+  pid_enabled[0]=pid_enabled[1]=0;pid_enabled[2]=1;
+  roll_control.setpoint_deg=pitch_control.setpoint_deg=0;yaw_control.setpoint_deg=90;
+  attitude_ekf.q[0]=cosf(22.5f*DEG_TO_RAD);attitude_ekf.q[1]=attitude_ekf.q[2]=0;
+  attitude_ekf.q[3]=sinf(22.5f*DEG_TO_RAD);AttitudeEKF_RefreshEuler();
+  AttitudeControl_Reset();
+  for(unsigned i=0;i<120000;i++){
+    tick+=5;assert(ControlTiming_Accept(5,tick));
+    if(i==60000)AttitudeControl_Reset();
+    float target[3]={0,0,yaw_control.setpoint_deg},error[3];
+    assert(ADCS_AttitudeError(attitude_ekf.q,target,error));
+    int32_t pwm=AxisControl_Update(&yaw_control,attitude_ekf.yaw_deg,error[2],0,28,2.4f,8,80,-1,.005f,pid_enabled[2]);
+    assert(pid_enabled[2]&&yaw_control.setpoint_deg==90);
+    assert(fabsf(attitude_ekf.yaw_deg-45)<.001f&&pwm>=-255&&pwm<=255&&pwm!=0);
+  }
+  puts("PASS autonomous hold: 600 simulated seconds without commands; target/PID survive controller recovery; measured 45deg remains separate from target 90deg");
+}
+static void test_measured_body_frame(void){
+  float old[3]={.01f,.02f,.03f},body[3],restored[3];
+  ADCS_LegacyToBody(old,body);ADCS_BodyToLegacy(body,restored);
+  assert(body[0]==old[1]&&body[1]==-old[0]&&body[2]==old[2]);
+  assert(!memcmp(old,restored,sizeof(old)));
+  float ex[3]={1,0,0},ey[3]={0,1,0},ez[3]={0,0,1};
+  ADCS_LegacyToBody(ex,ex);ADCS_LegacyToBody(ey,ey);ADCS_LegacyToBody(ez,ez);
+  float cross[3]={ex[1]*ey[2]-ex[2]*ey[1],ex[2]*ey[0]-ex[0]*ey[2],ex[0]*ey[1]-ex[1]*ey[0]};
+  for(unsigned i=0;i<3;i++)assert(cross[i]==ez[i]);
+  float gy[3];SensorToBodyGyroRad(0,GYRO_LSB_PER_DPS,0,gy);
+  assert(fabsf(gy[0]-DEG_TO_RAD)<1e-7f&&gy[1]==0&&gy[2]==0);
+  SensorToBodyGyroRad(GYRO_LSB_PER_DPS,0,0,gy);
+  assert(gy[0]==0&&fabsf(gy[1]-DEG_TO_RAD)<1e-7f&&gy[2]==0);
+  SensorToBodyGyroRad(0,0,GYRO_LSB_PER_DPS,gy);
+  assert(gy[0]==0&&gy[1]==0&&fabsf(gy[2]+DEG_TO_RAD)<1e-7f);
+  /* Reproduce the held physical Roll pose: legacy pitch +30 degrees. */
+  float accel[3],zero[3]={0};control_targets_initialized=0;
+  SensorToBodyAccel(accel_offset_raw[0]+.5f*ACCEL_LSB_PER_G/accel_scale[0],
+      accel_offset_raw[1],accel_offset_raw[2]-.8660254f*ACCEL_LSB_PER_G/accel_scale[2],accel);
+  AttitudeEKF_Init(zero,accel);
+  assert(fabsf(attitude_ekf.roll_deg-30)<.001f&&fabsf(attitude_ekf.pitch_deg)<.001f);
+  float target[3]={0},error[3];assert(ADCS_AttitudeError(attitude_ekf.q,target,error));
+  assert(fabsf(error[0]+30)<.001f&&fabsf(error[1])<.001f);
+  /* Legacy roll +30 is new pitch -30 when preserving the existing +Yaw. */
+  SensorToBodyAccel(accel_offset_raw[0],accel_offset_raw[1]+.5f*ACCEL_LSB_PER_G/accel_scale[1],
+      accel_offset_raw[2]-.8660254f*ACCEL_LSB_PER_G/accel_scale[2],accel);
+  AttitudeEKF_Init(zero,accel);
+  assert(fabsf(attitude_ekf.roll_deg)<.001f&&fabsf(attitude_ekf.pitch_deg+30)<.001f);
+  assert(ADCS_AttitudeError(attitude_ekf.q,target,error));
+  assert(fabsf(error[1]-30)<.001f&&fabsf(error[0])<.001f);
+  memset(&magnetometer,0,sizeof(magnetometer));for(unsigned i=0;i<3;i++)magnetometer.scale[i]=1;
+  GY511_MagToBody(100,200,300,body);assert(body[0]==200&&body[1]==-100&&body[2]==300);
+  float legacy_axis[3]={YAW_LEGACY_AXIS_X,YAW_LEGACY_AXIS_Y,YAW_LEGACY_AXIS_Z};
+  ADCS_LegacyToBody(legacy_axis,body);
+  assert(body[0]==YAW_AXIS_X&&body[1]==YAW_AXIS_Y&&body[2]==YAW_AXIS_Z);
+  puts("PASS measured Roll/Pitch mounting, right-handed rotation, gyro/mag consistency, yaw-axis preservation and PID error on the correct body axis");
+}
+int main(void){test_geometry();test_pid();test_encoder();test_accel_covariance();test_fusion();test_compass_dropout();test_operator_authority();test_autonomous_hold();test_measured_body_frame();}

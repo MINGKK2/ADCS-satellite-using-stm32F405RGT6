@@ -36,5 +36,17 @@ int main(void){
   rx(data,3000);rx(data,3000);rx(data,3000);assert(TelemetryUART_Stats().rx_dropped>0);assert(TelemetryUART_TakeRxLoss());
   huart1.ErrorCode=1;huart1.RxState=HAL_UART_STATE_READY;HAL_UART_ErrorCallback(&huart1);TelemetryUART_Service();
   assert(restarts==2&&TelemetryUART_Stats().uart_errors==1);
+  /* Ground station absent: no RX bytes and even a stuck TX completion may
+     discard telemetry, but must never block the caller or invent an ESTOP. */
+  assert(TelemetryUART_Init()==HAL_OK);huart1.gState=HAL_UART_STATE_READY;
+  assert(TelemetryUART_Send("FIRST\n",6,0,0));TelemetryUART_Service();
+  for(unsigned i=0;i<60000;i++){
+    assert(TelemetryUART_Send("OFFLINE\n",8,0,0));TelemetryUART_Service();
+    assert(!TelemetryUART_Read(out,sizeof(out))&&!TelemetryUART_TakeEstop());
+  }
+  assert(TelemetryUART_Stats().tx_dropped==59999);
+  complete();TelemetryUART_Service();assert(tx_size==8&&!memcmp(dma_tx,"OFFLINE\n",8));complete();
+  rx((uint8_t*)"\nESTOP\r\n",8);assert(TelemetryUART_TakeEstop());
+  puts("PASS offline UART: 60000 service cycles without ground RX or TX completion, bounded latest queue; explicit ESTOP still works on reconnection");
   puts("PASS UART: priority/DMA buffer lifetime, latest-frame queue, circular RX wrap, duplicate callbacks, urgent ESTOP, overflow/error counters and restart");
 }

@@ -1,4 +1,5 @@
 #include "calibration_store.h"
+#include "axis_frame.h"
 #include "stm32f4xx_hal.h"
 #include <assert.h>
 #include <stdio.h>
@@ -41,6 +42,13 @@ int main(int argc,char **argv){
   assert(CalibrationStore_Save(&d)==CAL_STORE_OK);
   assert(CalibrationStore_Load(&out)==CAL_STORE_OK&&!memcmp(&d,&out,sizeof(d)));
   int saved=programs;assert(CalibrationStore_Save(&d)==CAL_STORE_OK&&programs==saved);
+  /* New operational axes do not change the historical Flash bias encoding. */
+  float body_bias[3];ADCS_GyroBiasLoad(out.gyro_bias,body_bias);
+  assert(body_bias[0]==out.gyro_bias[1]&&body_bias[1]==-out.gyro_bias[0]&&body_bias[2]==out.gyro_bias[2]);
+  CalibrationData roundtrip=out;ADCS_GyroBiasSave(body_bias,roundtrip.gyro_bias);
+  assert(!memcmp(&roundtrip,&out,sizeof(out)));
+  assert(CalibrationStore_Save(&roundtrip)==CAL_STORE_OK&&programs==saved);
+  puts("PASS changed body axes preserve legacy Flash calibration bytes and journal dedup");
   CalibrationData bad=d;bad.mag_scale[0]=NAN;assert(CalibrationStore_Save(&bad)==CAL_STORE_INVALID);
   bad=d;bad.layout_tag++;assert(CalibrationStore_Save(&bad)==CAL_STORE_INVALID);
   for(int failure=0;failure<26;failure++){

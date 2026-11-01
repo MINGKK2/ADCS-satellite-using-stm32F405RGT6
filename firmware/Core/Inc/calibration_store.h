@@ -4,7 +4,9 @@
 #define CALIBRATION_ACCEL 1U
 #define CALIBRATION_MAG 2U
 #define CALIBRATION_GYRO 4U
-/* Bump the layout tag when sensor axis maps or units change. */
+/* Persistent encoding: raw-sensor accel/mag coefficients, historical-frame
+ * gyro bias. axis_frame.h converts gyro bias at the load/save boundary; this
+ * stored basis and units stay unchanged across the operational body rotation. */
 #define CALIBRATION_LAYOUT_TAG 0xF4053101UL
 typedef struct {
   uint32_t layout_tag,flags,measured_flags,mpu_who,mag_type;

@@ -1,70 +1,94 @@
 # CubeSat ADCS — STM32F405RGT6
 
-**Bản hiện tại: `MANUAL_PID_V1`** — PID ON/OFF theo yêu cầu người dùng, phục hồi/calib không tự xóa ON; UI tách trạng thái PID và đầu ra bị chặn. Xem [chi tiết sửa PID](docs/PID-OPERATOR-CONTROL-20261101.md). Thư mục [radio](radio/README.md) bổ sung cầu nạp STM32 qua S3 → ESP-NOW → C3 → UART; phải cài cầu USB lần đầu trước khi nạp STM32 không dây.
+Bản hiện tại: **`AXIS_FRAME_RP_PITCH_KP_V4`**, đã nạp USB DFU và verify ngày
+**2026-11-01**. Kp của Roll/Pitch/Yaw đã giảm một lần từ 28 xuống
+**28 / 2,4 = 11,6667**; Ki = 2,4 và Kd = 8. Đã đảo riêng chiều điều khiển Pitch.
+Chi tiết thay đổi và giới hạn kiểm chứng: [ADCS V4](docs/ADCS-V4-20261101.md).
 
-Bản khôi phục ngày **2026-11-01**, trước đợt thử Yaw/PWM và chuyển sang cascade PID. Khôi phục EKF và PID tư thế trực tiếp xuất PWM, cùng viewer tương ứng. **Kp 28 / Ki 2.4 / Kd 8** cho Roll/Pitch/Yaw là gain lịch sử của bản được khôi phục, chưa phải gain đã nhận dạng/tuning hoàn tất.
+## Source và bản build
 
-## Nội dung
+- `firmware/`: project STM32CubeIDE, `.ioc`, HAL/CMSIS/USB, linker chừa sector 11 cho calib.
+- `viewer/`: giao diện Web Serial, mô hình CAD 3D và thư viện Three.js cục bộ.
+- `radio/`: cầu telemetry **RADIO_ONLY_V1** C3/S3 hiện đang sử dụng; không có chức năng nạp STM32 không dây.
+- `artifacts/stm32-v4/`: ELF/BIN/HEX/map V4 và manifest SHA-256. Các thư mục artifact khác là mốc lịch sử.
+- `tests/`, `tools/`: kiểm thử thuật toán thực, DMA/parser/protocol, Flash calib và viewer.
 
-- `firmware/`: project STM32CubeIDE, HAL/CMSIS/USB middleware, `.ioc`, linker dành riêng sector 11 cho calib.
-- `viewer/`: giao diện telemetry/điều khiển, mô hình CAD 3D, Three.js cục bộ và giấy phép đi kèm.
-- `tests/`, `tools/`: regression test thuật toán thực, UART DMA, protocol, bộ nhớ calib và viewer.
-- `artifacts/stable-debug/`: mốc rollback cũ; `artifacts/manual-pid/`: bản PID mới. Mỗi bản có ELF/map/manifest SHA-256 riêng.
-- [Chi tiết khôi phục, kiểm thử và bảng nối chân](docs/STABLE-RESTORE-20261101.md).
+## Điều khiển và phần cứng
 
-## Phần cứng và điều khiển
+STM32F405RGT6, HSE 8 MHz / CPU 168 MHz; ba motor DC chổi than qua L298N.
+EKF dùng gyro/accel/la bàn; PID tư thế xuất PWM trực tiếp, độ lớn 0–255.
+Không có Auto tune hay vòng RPM cascade đang hoạt động. Encoder một kênh đo
+độ lớn RPM, phục vụ giám sát/giới hạn tốc độ và bảo vệ; không đo góc thân hoặc
+chiều quay độc lập. Gain hiện tại chưa được xác nhận là bộ gain tuning hoàn tất.
 
-STM32F405RGT6, HSE 8 MHz / CPU 168 MHz; ba motor DC chổi than qua hai L298N; encoder một kênh 25 xung/vòng. MPU6050 (chấp nhận WHO 0x68/0x70), GY-511, BMP280, INA219 và AHT30 trên PB6/PB7.
+| Trục | PWM | IN1 | IN2 | Encoder | Dấu điều khiển motor |
+|---|---|---|---|---|---|
+| Roll | PA6 / TIM3_CH1 | PC4 | PC5 | PA8, **chưa lắp** | +1 |
+| Pitch | PA7 / TIM3_CH2 | PB12 | PB13 | PC6 | **+1**, trước đây −1 |
+| Yaw | PB0 / TIM3_CH3 | PB1 | PB8 | PA0 | −1 |
 
-Chu kỳ tư thế/PID 5 ms; encoder 50 ms. Encoder của bản này phục vụ đo RPM, giới hạn quá tốc và bảo vệ mất xung. **Không có vòng RPM cascade đang hoạt động**, không coi encoder bánh đà là cảm biến góc thân và không coi dấu PWM là chiều quay đo được.
+Encoder cấu hình 25 xung/vòng; chu kỳ tư thế/PID đặt 5 ms, đo encoder 50 ms.
+Hệ trục thân tay phải: `(X_mới,Y_mới,Z_mới)=(Y_cũ,−X_cũ,Z_cũ)`, áp dụng đồng bộ
+cho accel/gyro/la bàn; giữ trục Yaw. Không đổi chân motor Roll/Pitch theo tên góc.
+Flash gyro bias vẫn giữ định dạng hệ cũ và được chuyển hệ khi load/save.
 
-Luồng telemetry: STM32 USART1 **PA9 TX → C3 GPIO20 RX**, **PA10 RX ← C3 GPIO21 TX**, GND chung, 3.3 V, 115200 8N1 → ESP-NOW → S3 → USB. Chỉ nối một UART C3. Source cầu C3/S3 mới nằm trong `radio/`; cần cài qua USB một lần.
+MPU6050 (WHO 0x68/0x70), GY-511, BMP280, INA219 và AHT30 dùng I2C1 PB6/PB7.
+GPS/camera chưa có driver phần cứng; viewer không tự tạo dữ liệu cho các mục này.
+PID ON/OFF thuộc người vận hành; mất liên lạc/la bàn không tự xóa yêu cầu PID hoặc
+target. Phản hồi không hợp lệ vẫn có thể chặn đầu ra bảo vệ, hiển thị qua
+`PID_ACTIVE`/`PID_BLOCK3`. Boot mặc định PID OFF/PWM 0; ESTOP luôn ưu tiên.
 
-Boot mặc định PID tắt/PWM 0. Không có autotune hoặc MOTOR_TEST trong bản khôi phục. Camera/GPS chưa có driver phần cứng, được báo chưa cấu hình.
+## Telemetry và viewer
 
-## Build
-
-1. Mở STM32CubeIDE, **File → Import → General → Existing Projects into Workspace**, chọn thư mục `firmware` có `.project`.
-2. Chọn **Debug**, Build Project. Bản đã xác minh dùng STM32CubeIDE 2.1.1 / GNU ARM 14.3.rel1.
-3. Giữ linker `STM32F405RGTX_FLASH_CAL.ld` ở cả Debug/Release. Không đổi sang linker FLASH đầy 1 MiB: sector 11 lưu calib.
-4. Sau khi IDE sinh thư mục `Debug`, có thể force rebuild bằng `powershell -ExecutionPolicy Bypass -File tools/build-stable.ps1` (truyền `-ToolchainBin`/`-MakeExe` nếu công cụ cài ở nơi khác).
-
-Các timer PWM/encoder và một số cấu hình được khởi tạo trong USER CODE của `main.c`; đọc source trước khi Generate Code, không dựa riêng vào sơ đồ pin CubeMX. Gain/mapping đang dùng là của mô hình cụ thể này.
-
-## Viewer
-
-Từ thư mục repo:
+STM32 **PA9 TX → C3 GPIO20 RX**, **PA10 RX ← C3 GPIO21 TX**, GND chung,
+logic 3,3 V, USART1 **115200 8N1** → ESP-NOW → S3 → USB **COM23**.
+Chỉ UART0 C3 làm nguồn telemetry. Xem [radio/README.md](radio/README.md).
 
 ```powershell
 python -m http.server 8765 --bind 127.0.0.1 --directory viewer
 ```
 
-Mở `http://127.0.0.1:8765/attitude-viewer.html` bằng trình duyệt hỗ trợ Web Serial, chọn COM của S3 (COM23 trên máy triển khai), 115200 baud. Không mở cùng COM bằng hai ứng dụng.
+Mở `http://127.0.0.1:8765/attitude-viewer.html`, chọn COM của S3, 115200 baud.
+Chỉ một ứng dụng được mở COM cùng lúc. Viewer đánh dấu dữ liệu cũ/không hợp lệ,
+tách góc đo, target, sai số hệ thân, PID output, PWM thực và RPM từng bánh đà.
 
-Telemetry là các trường `KEY=value` kết thúc CRLF; fast 20 Hz, slow 2 Hz, diag 1 Hz. Góc mdeg, gyro mdps, RPM milli-RPM, PWM có dấu; `PWM3` là lệnh đầu ra thực đã qua giới hạn. Ví dụ cú pháp, **không phải dữ liệu đo mới**:
+Protocol `KEY=value`, kết thúc CRLF; fast đặt 20 Hz, slow 2 Hz, diag 1 Hz.
+Góc mdeg, gyro mdps, RPM milli-RPM, PWM có dấu. Hệ số V4 được báo qua
+`ATK_u3=11667,2400,8000` theo quy ước milli-unit hiện có của trường này.
+Lệnh kết thúc LF/CRLF: `STATUS`, `SET_ATTITUDE,0,0,10`, `PID,YAW,1`,
+`PID,ALL,0`, `ESTOP`; phản hồi `ACK CMD=...` hoặc `NACK CMD=...`.
 
-```text
-SEQ=1 T_ms=1000 R=0 P=0 Y=90000 TARGET_mdeg=0,0,0 PIDOUT3=0,0,0 REQPWM3=0,0,0 PWM3=0,0,0 ERPM3_m=0,0,0 PID=0,0,0 ATT_VALID=1
-```
+## Build và kiểm thử
 
-Lệnh kết thúc LF/CRLF: `STATUS`, `SET_ATTITUDE,0,0,10`, `PID,YAW,1`, `PID,ALL,0`, `ESTOP`. Phản hồi bắt đầu `ACK CMD=...` hoặc `NACK CMD=...`; xem parser/main.c để biết điều kiện chấp nhận. Không chạy ví dụ bật PID khi gá chưa phù hợp.
-
-## Regression test
+1. STM32CubeIDE: Import Existing Projects, chọn `firmware`, Build Debug.
+2. Giữ linker `STM32F405RGTX_FLASH_CAL.ld` cho Debug/Release; sector 11 dành riêng calib.
+3. Sau khi CubeIDE sinh `Debug/makefile`, force rebuild bằng script dưới đây.
+   Script cũng tạo BIN/HEX mới từ ELF, tránh dùng ảnh cũ còn trong thư mục Debug.
 
 ```powershell
+powershell -ExecutionPolicy Bypass -File tools/build-stable.ps1
 powershell -ExecutionPolicy Bypass -File tools/test-stable.ps1
 ```
 
-Cần GCC host, Python 3, Node.js. Script có tham số `-Compiler`, `-Python`, `-Node`; mặc định dùng các đường dẫn cài trên máy triển khai rồi tìm công cụ trong PATH. Test không truy cập cổng COM và không chạy motor. Kiểm thử EKF tổng hợp 120 s, PID/encoder, mất la bàn 6 s, DMA/ESTOP, parser, bandwidth, CRC/mất điện khi ghi calib, viewer và mô hình CAD.
+Công cụ đã dùng: CubeIDE 2.1.1 / GNU ARM 14.3.rel1; GCC host, Python 3, Node.js.
+Scripts có tham số đường dẫn nếu công cụ cài ở nơi khác. Kiểm thử radio riêng
+được hướng dẫn trong `radio/README.md`. Test host không mở COM hoặc chạy motor.
+Một số timer/GPIO được khởi tạo trong USER CODE; đọc source trước khi Generate Code.
 
-## Nạp và hiệu chuẩn
+## Nạp và phạm vi xác minh
 
-Ngắt nguồn công suất motor, đưa STM32 vào DFU. Đọc/sao lưu toàn bộ sector 11 **trước khi nạp**; nạp ELF và verify, không mass erase. Đọc lại journal để so SHA-256 trước/sau. ELF cung cấp không có load segment trong sector 11. Calib Flash của từng board không đưa lên Git; các mặc định trong source là dữ liệu của mô hình gốc, cần hiệu chuẩn nếu dùng phần cứng khác.
+Ngắt nguồn công suất motor, vào USB DFU. Sao lưu toàn bộ sector 11 trước nạp,
+nạp ELF và verify, không mass erase; đọc lại sector 11 để so SHA-256.
+V4 đã verify thành công, sector calib 128 KiB trước/sau giống hệt nhau.
+Không đưa bản dump calib của board lên Git. Manifest chỉ ghi hash kiểm chứng.
 
-Bộ đọc calib có ngoại lệ tương thích v2 đường chéo để giữ bias gyro mới nhất từ bản thử nghiệm. Ma trận đầy đủ hoặc calib chỉ Yaw 2D không được tự coi là calib 3D hợp lệ cho thuật toán cũ.
+Build/kiểm thử phần mềm đã qua. Hai ESP radio-only đã nạp và verify; từng đo được
+telemetry khoảng 19 Hz và STATUS ACK hai chiều. Tuy nhiên có lần rút USB C3 thì
+mất radio dù đèn còn sáng; nguồn riêng của C3 chưa được đo/xác minh dứt điểm.
+**Sau nạp STM32 V4, S3 chỉ trả thống kê cục bộ, chưa nhận telemetry/STATUS ACK.**
+Chưa kiểm chứng chiều mô-men Pitch mới hoặc độ ổn định giữ góc với gain V4 trên
+phần cứng. Không kết luận ADCS ổn định chỉ vì build/verify hoặc có telemetry.
 
-## Phạm vi xác minh
-
-Build Debug không warning/error và regression test phần mềm đã qua. **Bản sửa PID chưa được nạp/kiểm tra lại trên motor/gá thực; mốc rollback trước đó đã được nạp DFU và verify, xem manifest riêng của từng bản.** Không kết luận hệ ADCS ổn định chỉ từ build/telemetry. Giữ PID tắt sau nạp, kiểm tra dữ liệu đo rồi thử từng trục theo gá thực tế.
-
-Mã HAL/CMSIS/USB và Three.js giữ thông báo bản quyền/giấy phép của từng bên trong thư mục tương ứng; không gán lại giấy phép cho mã của bên thứ ba.
+Các tài liệu trước V4 và các artifact cũ là lịch sử. Chức năng updater không dây
+đã được bỏ khỏi source hiện tại; có thể tra lại ở commit `3405635` nếu cần nghiên
+cứu. Nạp STM32 hiện dùng USB DFU. Mã HAL/CMSIS/USB và Three.js giữ nguyên giấy phép.

@@ -1,0 +1,39 @@
+{
+  "recorded_utc": "2026-11-01T12:58:48.973849+00:00",
+  "firmware_id": "AXIS_FRAME_RP_PITCH_KP_V4",
+  "flash_verified": true,
+  "go_acknowledged": true,
+  "calibration_unchanged": true,
+  "calibration_before_sha256": "acd5685b45e3a307d8f40256d1b56ad79de623f72ac268b8e3d5f6cb8b528b59",
+  "calibration_after_sha256": "acd5685b45e3a307d8f40256d1b56ad79de623f72ac268b8e3d5f6cb8b528b59",
+  "kp": 11.666666666666668,
+  "ki": 2.4,
+  "kd": 8,
+  "motor_signs": [
+    1,
+    1,
+    -1
+  ],
+  "motor_test_performed": false,
+  "post_flash_firmware_telemetry_confirmed": false,
+  "post_flash_radio_test": "S3 COM23 local stats only, 0 telemetry and no STATUS ACK over 12 seconds; S3 radio TXFAIL rose by 2. Did not alter or flash either ESP.",
+  "calibration_bytes_published": false,
+  "files": {
+    "STM32CubeIDE.bin": {
+      "bytes": 122364,
+      "sha256": "ccee2d3c0df43ec014e1f63c755a2c623e954684f8d5555d6de4f5030dd7685f"
+    },
+    "STM32CubeIDE.elf": {
+      "bytes": 1435688,
+      "sha256": "f0b4c6fe9d9370012e14069828b7ee245d1302130b754872fab9c95ab6b3bc80"
+    },
+    "STM32CubeIDE.hex": {
+      "bytes": 344243,
+      "sha256": "1564ff1a38bb3b5bde6a248f21955a9f6f1e62713b5f886870dc65511936814e"
+    },
+    "STM32CubeIDE.map": {
+      "bytes": 692526,
+      "sha256": "a39cde172d2090f679f425dbe0aba729bae634aa57f154080e941175a046bab5"
+    }
+  }
+}
