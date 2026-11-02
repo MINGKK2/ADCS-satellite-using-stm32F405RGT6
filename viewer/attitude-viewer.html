@@ -74,6 +74,8 @@
     .reading strong { display:block; overflow:hidden; text-overflow:ellipsis; margin-top:5px; font-size:14px; font-variant-numeric:tabular-nums; white-space:nowrap; }
     .axis-label { color:var(--cyan); }
     .freshness { margin-top:10px; display:flex; justify-content:space-between; gap:12px; color:var(--muted); font-size:11px; }
+    #encoderFaults,#encoderNoPulseStop { min-width:0; max-width:65%; overflow-wrap:anywhere; text-align:right; }
+    #encoderClearGuide { overflow-wrap:anywhere; }
     .cal-buttons { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
     .cal-buttons button { width:100%; padding:10px 8px; }
     .cal-guide { min-height:58px; padding:11px 12px; border-radius:10px; background:rgba(66,217,255,.07); border:1px solid rgba(66,217,255,.2); color:#bdefff; font-size:12px; line-height:1.45; }
@@ -116,6 +118,10 @@
     @media(max-width:820px){ .grid{grid-template-columns:1fr}.viewport{height:480px;min-height:420px}.sensor-grid{grid-template-columns:repeat(2,minmax(0,1fr))} }
     @media(max-width:570px){ .sensor-grid{grid-template-columns:1fr}.sensor-panel-head{display:block}.stream-health{justify-content:flex-start;margin-top:10px}.angles,.target-row,.axis-controls,.summary-grid{grid-template-columns:1fr}.app{width:min(100% - 16px,1180px)} }
   </style>
+  <link rel="stylesheet" href="./attitude-report.css">
+  <script defer src="./vendor/plotly/plotly-basic.min.js"></script>
+  <script defer src="./attitude-report-core.js"></script>
+  <script defer src="./attitude-report.js"></script>
   <script type="importmap">{"imports":{"three":"./vendor/three/three.module.min.js"}}</script>
 </head>
 <body>
@@ -127,6 +133,7 @@
         <select id="baud" aria-label="Baud rate"><option value="115200" selected>115200 baud · 8N1</option></select>
         <button id="connect" class="primary">Kết nối S3 · COM23</button>
         <button id="zero" disabled>Giữ Yaw hiện tại</button>
+        <a class="report-jump" href="#attitudeReport">Biểu đồ / báo cáo</a>
       </div>
     </header>
     <section class="grid">
@@ -211,6 +218,7 @@
                 <div class="reading"><span><b class="axis-label">Z</b> Gyro</span><strong id="gz">—</strong></div>
               </div>
               <div class="freshness"><span>WHO_AM_I</span><strong id="who">—</strong></div>
+              <div class="freshness"><span>Chất lượng đo chuyển động</span><strong id="imuMotionQuality">Chờ dữ liệu</strong></div>
             </article>
 
             <article class="sensor-card">
@@ -265,7 +273,10 @@
                 <div class="reading"><span><b class="axis-label">Yaw</b> SP / Error</span><strong id="encYawLoop">—</strong></div>
               </div>
               <div class="freshness"><span>Mẫu nhiễu bị loại R / P / Y</span><strong id="encoderRejected">—</strong></div>
-              <div class="freshness"><span>Fault mất xung / chạm giới hạn</span><strong id="encoderFaults">—</strong></div>
+              <div class="freshness"><span>Chốt cảnh báo encoder / giới hạn RPM (R · P · Y)</span><strong id="encoderFaults">—</strong></div>
+              <div class="freshness"><span>Tự dừng do mất xung</span><strong id="encoderNoPulseStop">Chờ dữ liệu</strong></div>
+              <p id="encoderClearGuide" class="help">Chờ chẩn đoán encoder. Cảnh báo mất xung chưa chứng minh động cơ hỏng.</p>
+              <button id="clearEncoder" disabled>Xóa chốt cảnh báo encoder</button>
             </article>
 
             <article class="sensor-card">
@@ -345,13 +356,41 @@
         <div class="help">Nếu không thấy cổng: đóng PuTTY/Serial Monitor trước. Trình duyệt Edge hoặc Chrome hỗ trợ Web Serial; Firefox không hỗ trợ.</div>
       </aside>
     </section>
+    <section class="panel report-panel" id="attitudeReport" aria-label="Biểu đồ đáp ứng tư thế và xuất báo cáo">
+      <div class="report-head">
+        <div><h2>Đáp ứng tư thế · dữ liệu báo cáo</h2><p>Ghi trước khi gửi target để đối chiếu góc đo với góc mục tiêu. Bật ghi chỉ lưu dữ liệu nhận được; không gửi lệnh điều khiển.</p></div>
+        <span id="reportSource" class="report-source">Nguồn: UART STM32 · góc EKF</span>
+      </div>
+      <div class="report-fields">
+        <label>Tên phép thử<input id="reportTitle" type="text" value="Đáp ứng tư thế CubeSat" maxlength="100" placeholder="Ví dụ: Yaw 0 đến 90 độ"></label>
+        <label>Trục<select id="reportAxis"><option value="2">Yaw</option><option value="1">Pitch</option><option value="0">Roll</option><option value="all">Cả 3 trục</option></select></label>
+        <label>Dữ liệu vẽ<select id="reportKind"><option value="angle">Góc đo / target</option><option value="error">Sai số Euler</option><option value="pwm">PWM thực</option><option value="rpm">RPM bánh đà</option><option value="gyro">Gyro hệ thân</option></select></label>
+        <label>Khoảng hiển thị<select id="reportWindow"><option value="0">Toàn phiên</option><option value="30">30 giây cuối</option><option value="60">60 giây cuối</option><option value="120">120 giây cuối</option></select></label>
+      </div>
+      <div class="report-actions">
+        <button id="reportStart" type="button" class="primary">Bắt đầu ghi</button><button id="reportStop" type="button" disabled>Dừng ghi</button><button id="reportClear" type="button">Phiên mới</button>
+        <span class="report-divider"></span>
+        <button id="reportImport" type="button">Mở CSV</button><input id="reportFile" type="file" accept=".csv,text/csv" hidden>
+        <button id="reportCsv" type="button" disabled>Xuất CSV</button><button id="reportPng" type="button" disabled>Ảnh PNG</button><button id="reportSvg" type="button" disabled>Ảnh SVG</button><button id="reportJson" type="button" disabled>Kết quả JSON</button>
+      </div>
+      <div id="reportStatus" class="report-status" role="status" aria-live="polite">Chưa ghi dữ liệu.</div>
+      <details class="report-paste"><summary>Dán CSV thay vì chọn file</summary><label>Nội dung CSV đã xuất<textarea id="reportPasteText" rows="4" placeholder="Dán cả hàng tiêu đề và các dòng dữ liệu CSV đã xuất từ trang này."></textarea></label><button id="reportPasteLoad" type="button">Vẽ CSV đã dán</button></details>
+      <div id="reportChart" class="report-chart" aria-label="Biểu đồ thời gian: góc đo EKF và góc mục tiêu"></div>
+      <div class="report-criteria">
+        <label>Dải sai số ± (°)<input id="reportTolerance" type="number" min="0.01" max="30" step="0.1" value="2"></label>
+        <label>Giữ trong dải ít nhất (s)<input id="reportHold" type="number" min="0.1" max="60" step="0.1" value="1"></label>
+        <p>Chỉ số tính cho đoạn target không đổi cuối cùng trong khoảng thời gian đang chọn hoặc zoom. Thời gian vào dải cần ghi được bước đổi target, tính từ mẫu đầu thấy target mới; chỉ xác nhận trong đoạn đã ghi.</p>
+      </div>
+      <div class="report-table-wrap"><table class="report-table"><thead><tr><th>Trục</th><th>Target cuối</th><th>Sai số cuối · TB 1 s</th><th>RMSE</th><th>Vượt target</th><th>Thời gian vào dải</th><th>Mẫu hợp lệ</th><th>Kết quả quan sát</th></tr></thead><tbody id="reportMetrics"></tbody></table></div>
+      <p class="report-help">Đường liền: góc EKF nhận từ STM32. Nét đứt: target thực trong telemetry. Mẫu IMU không hợp lệ và đoạn mất dữ liệu không được nối liền; điểm × đánh dấu mẫu tư thế lỗi. Góc qua ±180° được ngắt nét. Sai số Euler là góc ngắn nhất target − đo, khác sai số quaternion hệ thân của PID. CSV giữ góc gốc, PWM, RPM, cờ PID/validity và thời gian MCU/PC của toàn phiên; ảnh nền trắng dùng khoảng đang chọn. Dữ liệu ghi trong bộ nhớ trình duyệt: xuất CSV trước khi tải lại trang. Biểu đồ phản ánh EKF, cần đo góc độc lập nếu muốn xác nhận góc vật lý tuyệt đối.</p>
+    </section>
   </main>
   <script type="module" src="./attitude-model.js"></script>
   <script>
     const ui = Object.fromEntries([
       'status','connect','zero','baud','roll','pitch','yaw','pwm','rate','encoder','mrj','log','scene',
       'calGyro','calMag','calAccel','captureAccel','calGuide','calStoreState','streamState','packetRate','lastFrame',
-      'imuState','who','ax','ay','az','gx','gy','gz','magState','mx','my','mz','magRejected',
+      'imuState','who','ax','ay','az','gx','gy','gz','imuMotionQuality','magState','mx','my','mz','magRejected',
       'bmpState','bmpTemp','bmpPressure','inaState','inaVoltage','inaCurrent','inaPower',
       'ahtState','ahtTemp','ahtHumidity','encoderState','encRollCount','encPitchCount','encYawCount',
       'encRollRpm','encPitchRpm','encYawRpm','encRollSigned','encPitchSigned','encYawSigned',
@@ -366,7 +405,7 @@
       'dbgRollSafety','dbgPitchSafety','dbgYawSafety',
 
 
-      'energyUsed','cameraState','gyroCalState','otherCalState','pidAllOn','pidAllOff'
+      'energyUsed','cameraState','gyroCalState','otherCalState','pidAllOn','pidAllOff','encoderClearGuide','clearEncoder','encoderNoPulseStop'
     ].map(id=>[id,document.getElementById(id)]));
     let port=null, reader=null, reading=false, buffer='', yawOffset=0, latestYaw=0, logLines=[], accelCalActive=false;
     let lastTelemetryAt=0, packetTimes=[], byteTimes=[], totalBytes=0, totalPackets=0, lostPackets=0, lastSequence=null, estopActive=false;
@@ -378,10 +417,28 @@
     const hex=(line,key)=>{const m=line.match(new RegExp('(?:^|\\s)'+key+'=0x([0-9a-f]+)','i'));return m?m[1].toUpperCase():null;};
     const vec3=(line,key)=>{const m=line.match(new RegExp('(?:^|\\s)'+key+'=(-?\\d+),(-?\\d+),(-?\\d+)'));return m?[Number(m[1]),Number(m[2]),Number(m[3])]:null;};
     const word=(line,key)=>{const m=line.match(new RegExp('(?:^|\\s)'+key+'=([A-Z0-9_]+)','i'));return m?m[1].toUpperCase():null;};
+    const quat4=(line)=>{const m=line.match(/(?:^|\s)Q_u6=(-?\d+),(-?\d+),(-?\d+),(-?\d+)(?:\s|$)/);return m?m.slice(1).map(v=>Number(v)/1000000):null;};
+    const encoderFaultReason=code=>{const reasons=[];if(code&1)reasons.push('không nhận xung khi PWM ≥ 80 trong 1,5 s');if(code&2)reasons.push('tần số xung ngoài dải hợp lệ');if(code&~3)reasons.push('mã chưa biết '+code);return reasons.join('; ')||'không chốt cảnh báo';};
     const value=(element,number,digits,unit)=>{if(number!==null&&Number.isFinite(number))element.textContent=number.toFixed(digits)+(unit?' '+unit:'');};
     const setSensorState=(element,valid,text)=>{element.classList.remove('warning');element.classList.toggle('valid',valid);element.classList.toggle('invalid',!valid);element.textContent=text||(valid?'Đang hoạt động':'Không hợp lệ');};
     const setSensorWarning=(element,text)=>{element.classList.remove('valid','invalid');element.classList.add('warning');element.textContent=text;};
     const markSensorsStale=()=>[ui.imuState,ui.magState,ui.bmpState,ui.inaState,ui.ahtState,ui.encoderState,ui.gpsState,ui.linkState].forEach(el=>setSensorState(el,false,'Chờ dữ liệu'));
+    function updateEncoderClear(){
+      const vector=key=>{const a=telemetryCache[key]?.split(',').map(Number);return a?.length===3&&a.every(Number.isFinite)?a:null;};
+      const faults=vector('EF3'),recovery=vector('EREC3'),pid=vector('PID'),pwm=vector('PWM3'),valid=vector('EV3');
+      const now=performance.now(),fresh=streamTimes.fast!==null&&now-streamTimes.fast<500&&streamTimes.diag!==null&&now-streamTimes.diag<=2500;
+      const noPulseStop=telemetryCache.ENC_NO_PULSE_STOP;
+      ui.encoderNoPulseStop.textContent=!fresh?'Chờ dữ liệu mới':noPulseStop==='0'?'ĐÃ TẮT · mất xung không chặn PWM':noPulseStop==='1'?'Đang bật':'Firmware chưa gửi trạng thái';
+      ui.clearEncoder.disabled=true;
+      if(!fresh||!faults){ui.encoderClearGuide.textContent='Chờ dữ liệu encoder mới để xác định chốt cảnh báo.';return;}
+      if(!faults.some(Boolean)){ui.encoderClearGuide.textContent='Không có chốt cảnh báo encoder. Đây không phải tín hiệu báo lỗi phần cứng của L298N.';return;}
+      if(!recovery){ui.encoderClearGuide.textContent='Firmware hiện tại chưa hỗ trợ xác minh lần lượt từng bánh; cập nhật bản V7 để dùng nút xóa chốt.';return;}
+      const proof=['Roll','Pitch','Yaw'].filter((_,i)=>faults[i]).map(name=>{const i=['Roll','Pitch','Yaw'].indexOf(name);return name+': '+recovery[i]+'/25 xung';}).join(' · ');
+      if(!pid||!pwm||pid.some(Boolean)||pwm.some(Boolean)){ui.encoderClearGuide.textContent='Tắt cả ba PID, ngắt nguồn công suất motor rồi kiểm tra encoder. '+proof;return;}
+      const verified=!!valid&&faults.every((code,i)=>!code||(recovery[i]>=25&&valid[i]===1));
+      ui.encoderClearGuide.textContent=(verified?'Đã đủ xung xác minh; có thể xóa chốt. PID vẫn tắt. ':'Giữ motor ngắt, quay tay từng bánh có cảnh báo ít nhất một vòng. ')+proof;
+      ui.clearEncoder.disabled=!port?.writable||!verified;
+    }
     function notePacket(sequence){
       const now=performance.now(); lastTelemetryAt=now; packetTimes.push(now); packetTimes=packetTimes.filter(t=>now-t<1000);
       totalPackets++; if(sequence!==null){if(lastSequence!==null){const delta=(sequence-lastSequence)>>>0;if(delta>1&&delta<0x80000000)lostPackets+=delta-1;}lastSequence=sequence;}
@@ -389,6 +446,7 @@
       ui.packetRate.textContent=packetTimes.length+' gói/s';
     }
     function updateFreshness(){
+      updateEncoderClear();
       const now=performance.now();
       const ageOf=type=>streamTimes[type]===null?Infinity:now-streamTimes[type];
       ui.frameAges.textContent='Tuổi bản tin nhanh / cảm biến / chẩn đoán: '+['fast','slow','diag'].map(type=>Number.isFinite(ageOf(type))?Math.round(ageOf(type))+' ms':'chưa nhận').join(' / ')+` · trùng ${duplicates} · sai thứ tự ${reordered}`;
@@ -409,7 +467,7 @@
     }
     setInterval(updateFreshness,250);
     const setCalControls=enabled=>{ui.calGyro.disabled=!enabled;ui.calMag.disabled=!enabled;ui.calAccel.disabled=!enabled;ui.captureAccel.disabled=!enabled||!accelCalActive;};
-    const setMissionControls=enabled=>{[ui.sendTarget,ui.workingMode,ui.chargingMode,ui.captureCamera,ui.emergencyStop,ui.setRoll,ui.setPitch,ui.setYaw,ui.pidRoll,ui.pidPitch,ui.pidYaw,ui.pidAllOn,ui.pidAllOff].forEach(el=>el.disabled=!enabled);};
+    const setMissionControls=enabled=>{[ui.sendTarget,ui.workingMode,ui.chargingMode,ui.captureCamera,ui.emergencyStop,ui.setRoll,ui.setPitch,ui.setYaw,ui.pidRoll,ui.pidPitch,ui.pidYaw,ui.pidAllOn,ui.pidAllOff].forEach(el=>el.disabled=!enabled);if(!enabled)ui.clearEncoder.disabled=true;};
     const setGuide=(text,error=false)=>{ui.calGuide.textContent=text;ui.calGuide.style.color='';ui.calGuide.classList.toggle('error',error);};
     function sendCommand(command){
       txChain=txChain.catch(()=>{}).then(()=>writeCommand(command));return txChain;
@@ -424,7 +482,7 @@
     function handleCalibrationLine(line){
       if(/^(ACK|NACK) /.test(line)){
         const ack=(line.match(/\bCMD=([A-Z_]+)/)||[])[1];
-        const kind=command=>{const normalized=command.replace(/[ ,]+/g,'_').replace(/^ESTOP_CLEAR$/,'EMERGENCY_STOP_CLEAR').replace(/^ESTOP$/,'EMERGENCY_STOP');return ['CAL_ACCEL_CAPTURE','CAL_ACCEL_CANCEL','CAL_ACCEL_START','CAL_GYRO','CAL_MAG','CAMERA_CAPTURE','SET_ATTITUDE','EMERGENCY_STOP_CLEAR','EMERGENCY_STOP','ZERO_YAW','STATUS','PID','MODE'].find(k=>normalized===k||normalized.startsWith(k+'_'))||normalized;};
+        const kind=command=>{const normalized=command.replace(/[ ,]+/g,'_').replace(/^ESTOP_CLEAR$/,'EMERGENCY_STOP_CLEAR').replace(/^ESTOP$/,'EMERGENCY_STOP');return ['CAL_ACCEL_CAPTURE','CAL_ACCEL_CANCEL','CAL_ACCEL_START','CAL_GYRO','CAL_MAG','CAMERA_CAPTURE','SET_ATTITUDE','EMERGENCY_STOP_CLEAR','EMERGENCY_STOP','ENCODER_CLEAR','ZERO_YAW','STATUS','PID','MODE'].find(k=>normalized===k||normalized.startsWith(k+'_'))||normalized;};
         const at=pendingCommands.findIndex(c=>kind(c.command)===ack);if(at>=0)pendingCommands.splice(at,1);
       }
       if(line.startsWith('ACK ')&&line.includes('CMD=ZERO_YAW'))yawOffset=latestYaw;
@@ -470,22 +528,34 @@
       if(buffer.length>4096){buffer='';discardRxLine=true;}
     }
     function render(line){
+      const reportRawLine=line;
       logLines.push(line); if(logLines.length>7)logLines.shift(); ui.log.textContent=logLines.join('\n'); ui.log.scrollTop=ui.log.scrollHeight;
       handleCalibrationLine(line);
       const merged=mergeTelemetry(line);
       if(!merged)return;
+      globalThis.attitudeReport?.ingest(reportRawLine,merged.type);
       line=merged.line;
       const r=num(line,'R'),p=num(line,'P'),y=num(line,'Y');
       if(r===null||p===null||y===null)return;
       if(!merged.auxiliary)notePacket(num(line,'SEQ'));
       const roll=r/1000,pitch=p/1000; latestYaw=y/1000; const yaw=((latestYaw-yawOffset+540)%360)-180;
       const attitudeValid=num(line,'ATT_VALID');
-      if(attitudeValid===1 && streamTimes.fast!==null && performance.now()-streamTimes.fast<500){
+      // A slow/diagnostic record must never drive the pose with cached Euler/q.
+      if(!merged.auxiliary){
+      const measuredQuaternion=quat4(reportRawLine);
+      const qnorm=measuredQuaternion?Math.hypot(...measuredQuaternion):1;
+      if(attitudeValid===1 && qnorm>=.5&&qnorm<=1.5 && streamTimes.fast!==null && performance.now()-streamTimes.fast<500){
       ui.roll.textContent=roll.toFixed(2)+'°'; ui.pitch.textContent=pitch.toFixed(2)+'°'; ui.yaw.textContent=yaw.toFixed(2)+'°';
       ui.scene.style.opacity='1';
       globalThis.cubesatAttitude={roll,pitch,yaw,valid:true};
+      if(measuredQuaternion){globalThis.cubesatAttitude.quaternion=measuredQuaternion;globalThis.cubesatAttitude.yawOffset=yawOffset;}
       globalThis.cubesatModel?.setAttitude(globalThis.cubesatAttitude);
       }else{ui.roll.textContent='—';ui.pitch.textContent='—';ui.yaw.textContent='—';if(globalThis.cubesatAttitude)globalThis.cubesatAttitude.valid=false;globalThis.cubesatModel?.setValidity(false);}
+      }
+      if(merged.type==='diag'){
+        const fs=num(line,'GYRO_FS_dps'),gc=num(line,'GYRO_CLIP'),ac=num(line,'ACC_CLIP');
+        if(fs!==null&&gc!==null&&ac!==null)ui.imuMotionQuality.textContent=`Gyro ±${fs} °/s · mẫu chạm giới hạn gyro/accel: ${gc}/${ac}`;
+      }
       const measured=vec3(line,'MEAS_mdeg')||[r,p,y];
       const target=vec3(line,'TARGET_mdeg')||vec3(line,'SP_mdeg');
       if(target){value(ui.targetRoll,target[0]/1000,2,'°');value(ui.targetPitch,target[1]/1000,2,'°');value(ui.targetYaw,((target[2]/1000-yawOffset+540)%360)-180,2,'°');}
@@ -527,7 +597,7 @@
         if(word(line,'CTRL')!=='WHEEL_SPEED_TEST')ui.encRollLoop.textContent=ui.encPitchLoop.textContent=ui.encYawLoop.textContent='Giám sát RPM, không có SP tốc độ';
       }
       if(encoderFault&&encoderLimited){
-        ui.encoderFaults.textContent=`${encoderFault.join('/')} / ${encoderLimited.join('/')}`;
+        ui.encoderFaults.textContent=['Roll','Pitch','Yaw'].map((name,i)=>`${name}: ${encoderFaultReason(encoderFault[i])}${encoderLimited[i]?' · giới hạn RPM':''}`).join(' | ');
         const hasFault=encoderFault.some(Boolean),hasLimit=encoderLimited.some(Boolean);
         setSensorState(ui.encoderState,!hasFault,hasFault?'Fault encoder đã chốt':(hasLimit?'Giới hạn RPM':'Bộ đếm hoạt động · chưa xác minh cảm biến'));
       }
@@ -559,8 +629,8 @@
       if(attitudeGains)ui.attitudeGains.textContent=`Kp ${(attitudeGains[0]/1000).toFixed(3)} · Ki ${(attitudeGains[1]/1000).toFixed(3)} · Kd ${(attitudeGains[2]/1000).toFixed(3)}`;
       const pidBlocks=vec3(line,'PID_BLOCK3'),pidRequests=vec3(line,'PID');
       if(pidBlocks&&pidRequests){
-        const reasons=[[1,'ESTOP'],[2,'IMU chưa có mẫu mới'],[4,'EKF đang phục hồi'],[8,'đang calib/phục hồi'],[16,'fault encoder'],[32,'RPM chưa hợp lệ'],[64,'giới hạn RPM'],[128,'trễ chu kỳ']];
-        const state=(i)=>!pidRequests[i]?'PID OFF · theo lệnh bạn':pidBlocks[i]?`PID ON · đầu ra tạm chặn: ${reasons.filter(([bit])=>pidBlocks[i]&bit).map(([,name])=>name).join(', ')}`:'PID ON · đang điều khiển';
+        const reasons=[[1,'ESTOP'],[2,'IMU chưa có mẫu mới'],[4,'EKF đang phục hồi'],[8,'đang calib/phục hồi'],[16,'chốt cảnh báo encoder'],[32,'RPM chưa hợp lệ'],[64,'giới hạn RPM'],[128,'trễ chu kỳ']];
+        const state=(i)=>!pidRequests[i]?'PID OFF · theo lệnh bạn':pidBlocks[i]?`PID ON · đầu ra tạm chặn: ${reasons.filter(([bit])=>pidBlocks[i]&bit).map(([bit,name])=>bit===16&&encoderFault&&encoderFault[i]&&streamTimes.diag!==null&&performance.now()-streamTimes.diag<=2500?name+' ('+encoderFaultReason(encoderFault[i])+')':name).join(', ')}`:'PID ON · đang điều khiển';
         ui.dbgRollSafety.textContent=state(0);ui.dbgPitchSafety.textContent=state(1);ui.dbgYawSafety.textContent=state(2);
       }
       const wheelKp=vec3(line,'WKP_u6'),wheelKi=vec3(line,'WKI_u6'),wheelKd=vec3(line,'WKD_u6');
@@ -641,7 +711,7 @@
         if(encoderCounts)ui.encoder.textContent=encoderCounts.map((v,i)=>installedEncoders[i]?v:'—').join(' / ');
         const fittedFaults=vec3(line,'EF3');
         const fittedFault=!!fittedFaults&&installedEncoders.some((present,i)=>present&&fittedFaults[i]);
-        setSensorState(ui.encoderState,!fittedFault,(fittedFault?'Fault encoder: ':'Đã lắp: ')+names.filter((_,i)=>installedEncoders[i]).join(', '));
+        setSensorState(ui.encoderState,!fittedFault,(fittedFault?'Chốt cảnh báo encoder: ':'Đã lắp: ')+names.filter((_,i)=>installedEncoders[i]&&(!fittedFault||fittedFaults[i])).join(', '));
       }
       updateFreshness();
     }
@@ -662,6 +732,7 @@
       catch(e){ ui.log.textContent='Không kết nối được: '+e.message; setStatus('Chưa kết nối'); }
     }
     async function disconnect(){
+      globalThis.attitudeReport?.connectionLost();
       reading=false; try{await reader?.cancel();}catch{} try{await port?.close();}catch{} reader=null;port=null;lastTelemetryAt=0;packetTimes=[];byteTimes=[];markSensorsStale();setSensorState(ui.linkState,false,'Đã ngắt');ui.streamState.className='stream-pill lost';ui.streamState.textContent='Đã ngắt UART';ui.packetRate.textContent='0 gói/s';ui.lastFrame.textContent='—';accelCalActive=false;ui.connect.textContent='Kết nối S3 · COM23';ui.zero.disabled=true;ui.baud.disabled=false;ui.calAccel.textContent='Calib Accel 6 mặt';setCalControls(false);setMissionControls(false);setGuide('Đã ngắt kết nối.');setStatus('Đã ngắt kết nối');
     }
     ui.connect.addEventListener('click',()=>port?disconnect():connect());
@@ -674,6 +745,7 @@
     [['ROLL',ui.pidRoll],['PITCH',ui.pidPitch],['YAW',ui.pidYaw]].forEach(([axis,checkbox])=>checkbox.addEventListener('change',()=>sendCommand(`PID,${axis},${checkbox.checked?1:0}`)));
     ui.pidAllOn.addEventListener('click',()=>sendCommand('PID,ALL,1'));
     ui.pidAllOff.addEventListener('click',()=>sendCommand('PID,ALL,0'));
+    ui.clearEncoder.addEventListener('click',()=>{updateEncoderClear();if(!ui.clearEncoder.disabled)sendCommand('ENCODER_CLEAR');});
     ui.workingMode.addEventListener('click',()=>sendCommand('MODE,WORKING'));
     ui.chargingMode.addEventListener('click',()=>sendCommand('MODE,CHARGING'));
     ui.captureCamera.addEventListener('click',()=>sendCommand('CAMERA,CAPTURE'));

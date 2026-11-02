@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
-import { attitudeQuaternion } from './attitude-model-math.js';
+import { attitudeQuaternion,poseQuaternion } from './attitude-model-math.js';
 import { Quaternion,Euler,Vector3 } from './vendor/three/three.core.min.js';
 for(const angles of [[0,0,0],[90,0,0],[0,90,0],[0,0,90],[30,-40,120],[-170,89,-179]]){
   const actual=attitudeQuaternion(...angles),expected=new Quaternion().setFromEuler(new Euler(...angles.map(v=>v*Math.PI/180),'ZYX'));
@@ -9,6 +9,19 @@ for(const angles of [[0,0,0],[90,0,0],[0,90,0],[0,0,90],[30,-40,120],[-170,89,-1
   assert(Math.abs(actual.reduce((s,v)=>s+v*v,0)-1)<1e-12);
 }
 assert.equal(attitudeQuaternion(NaN,0,0),null);
+for(const pitch of [89.9,90,90.1,100]){
+  const q=new Quaternion().setFromEuler(new Euler(.2,pitch*Math.PI/180,1,'ZYX'));
+  const actual=poseQuaternion({quaternion:[q.w,q.x,q.y,q.z],roll:0,pitch:0,yaw:0});
+  assert(new Quaternion(...actual).angleTo(q)<1e-7);
+  const offset=poseQuaternion({quaternion:[q.w,q.x,q.y,q.z],yawOffset:90});
+  const expected=new Quaternion().setFromAxisAngle(new Vector3(0,0,1),-Math.PI/2).multiply(q);
+  assert(new Quaternion(...offset).angleTo(expected)<1e-7);
+}
+assert.equal(poseQuaternion({quaternion:[0,0,0,0],roll:0,pitch:0,yaw:0}),null);
+assert.equal(poseQuaternion({quaternion:[1,NaN,0,0]}),null);
+assert.deepEqual(poseQuaternion({roll:0,pitch:0,yaw:90}),attitudeQuaternion(0,0,90));
+const modelSource=fs.readFileSync(new URL('./attitude-model.js',import.meta.url),'utf8');
+assert(!modelSource.includes('slerp(targetQuaternion'));assert(modelSource.includes('quaternion.copy(targetQuaternion)'));
 const rotated=new Vector3(1,0,0).applyQuaternion(new Quaternion(...attitudeQuaternion(0,0,90)));
 assert(Math.abs(rotated.y-1)<1e-12&&Math.abs(rotated.x)<1e-12);
 const midpoint=new Quaternion(...attitudeQuaternion(0,0,179)).slerp(new Quaternion(...attitudeQuaternion(0,0,-179)),.5);

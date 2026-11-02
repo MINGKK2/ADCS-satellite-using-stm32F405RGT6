@@ -82,6 +82,7 @@ static void Calibration_Save(uint32_t measured_flags);
 #define MPU6050_CONFIG        0x1A
 #define MPU6050_GYRO_CONFIG   0x1B
 #define MPU6050_ACCEL_CONFIG  0x1C
+#define MPU6500_ACCEL_CONFIG2 0x1D
 #define MPU6050_ACCEL_XOUT_H  0x3B
 #define MPU6050_PWR_MGMT_1    0x6B
 #define MPU6050_WHO_AM_I      0x75
@@ -148,21 +149,21 @@ static void Calibration_Save(uint32_t measured_flags);
    They are not claimed as plant-identified values; verify them from logged
    step tests before treating the tuning as final. */
 #define ROLL_KP               (28.0f / 2.4f)
-#define ROLL_KI                2.4f
+#define ROLL_KI                5.0f
 #define ROLL_KD                8.0f
 #define ROLL_INTEGRAL_LIMIT    80.0f
 #define PITCH_KP              (28.0f / 2.4f)
-#define PITCH_KI               2.4f
+#define PITCH_KI               5.0f
 #define PITCH_KD               8.0f
 #define PITCH_INTEGRAL_LIMIT   80.0f
 #define YAW_KP                (28.0f / 2.4f)
-#define YAW_KI                2.4f
+#define YAW_KI                5.0f
 #define YAW_KD                8.0f
 #define YAW_INTEGRAL_LIMIT     80.0f
 
 #define DEG_TO_RAD            0.017453292519943295f
 #define RAD_TO_DEG            57.29577951308232f
-#define GYRO_LSB_PER_DPS       131.0f
+#define GYRO_LSB_PER_DPS       32.8f
 #define ACCEL_LSB_PER_G        16384.0f
 
 /* Six-face accelerometer calibration measured on this module. */
@@ -180,13 +181,15 @@ static void Calibration_Save(uint32_t measured_flags);
 #define ACCEL_GATE_MIN_G       0.94f
 #define ACCEL_GATE_MAX_G       1.06f
 #define ACCEL_INNOVATION_MIN_DOT 0.90f
+#define ACCEL_DYNAMIC_RESIDUAL_G 0.030f
+#define ACCEL_MAX_CORRECTION_RAD 0.00872664626f
 #define MAG_FIELD_MIN_RATIO    0.72f
 #define MAG_FIELD_MAX_RATIO    1.28f
 #define MAG_INNOVATION_MIN_DOT 0.82f
 #define STATIONARY_ACCEL_TOL_G 0.025f
 #define STATIONARY_GYRO_DPS    0.80f
 #define STATIONARY_CONFIRM_MS  800U
-#define GYRO_CAL_MAX_RANGE_RAW 800
+#define GYRO_CAL_MAX_RANGE_RAW ((int32_t)(6.1f*GYRO_LSB_PER_DPS))
 
 /* Last known-good calibration for this GY-511. A manual CAL MAG command
    replaces these values in RAM until the next reset. */
@@ -211,8 +214,7 @@ static void Calibration_Save(uint32_t measured_flags);
 #define WHEEL_ENCODER_PULSES_PER_REV  25.0f
 #define WHEEL_ENCODER_FILTER_ALPHA    0.35f
 #define WHEEL_ENCODER_MAX_RPM         30000.0f
-#define ENCODER_MONITOR_MIN_PWM       80
-#define ENCODER_NO_PULSE_TIMEOUT_MS   1500U
+#define ENCODER_CLEAR_VERIFY_PULSES   25U
 
 /* GY-511 axes to body axes. This default assumes the module X/Y/Z arrows are
    mounted parallel to body X/Y/Z. Change signs/order here if the board is
@@ -243,6 +245,10 @@ typedef struct
   uint32_t last_dt_us;
   uint32_t stationary_since_ms;
   uint8_t stationary;
+  uint8_t accel_history_valid;
+  float previous_accel_raw[3];
+  float accel_observation_variance;
+  uint32_t gyro_clipped_samples,accel_clipped_samples;
 } AttitudeEkf_t;
 
 typedef struct
@@ -277,15 +283,15 @@ typedef struct
   float rpm;
   float signed_rpm_estimate;
   int8_t assumed_direction;
-  uint32_t last_pulse_tick_ms;
   uint32_t last_delta_count;
   uint32_t last_edge_tick_ms;
   float raw_rpm;
   uint8_t pulse_seen;
-  uint8_t no_pulse_fault;
+  uint8_t fault_flags; /* EF3 0x02: implausible pulse rate; 0x01 is no longer generated. */
   uint8_t overspeed_limited;
   uint8_t counter_is_16_bit;
   uint8_t speed_valid;
+  uint32_t recovery_pulses;
 } WheelEncoder_t;
 
 typedef struct
@@ -698,7 +704,7 @@ static int32_t Motor_ApplySupervisedCommand(
   uint8_t previously_limited=wheel_encoder[axis].overspeed_limited;
   wheel_encoder[axis].overspeed_limited = 0U;
 
-  if (wheel_encoder[axis].no_pulse_fault != 0U)
+  if (wheel_encoder[axis].fault_flags != 0U)
   {
     applied_command = 0;
   }
@@ -797,13 +803,13 @@ static void WheelEncoders_Init(void)
     wheel_encoder[axis].rpm = 0.0f;
     wheel_encoder[axis].signed_rpm_estimate = 0.0f;
     wheel_encoder[axis].assumed_direction = 0;
-    wheel_encoder[axis].last_pulse_tick_ms = now;
     wheel_encoder[axis].last_delta_count = 0U;
-    wheel_encoder[axis].no_pulse_fault = 0U;
+    wheel_encoder[axis].fault_flags = 0U;
     wheel_encoder[axis].overspeed_limited = 0U;
     wheel_encoder[axis].counter_is_16_bit =
         (axis == MOTOR_AXIS_YAW) ? 0U : 1U;
     wheel_encoder[axis].speed_valid = 0U;
+    wheel_encoder[axis].recovery_pulses = 0U;
   }
 }
 
@@ -862,7 +868,11 @@ static void WheelEncoder_UpdateOne(
 
       if (delta_count > 0U)
       {
-        encoder->last_pulse_tick_ms = now_ms;
+        /* Recovery is evidence collected while disarmed, never an automatic clear. */
+        if(encoder->fault_flags && !pid_enabled[axis] && !motor_command[axis]) {
+          uint32_t remaining=ENCODER_CLEAR_VERIFY_PULSES-encoder->recovery_pulses;
+          encoder->recovery_pulses += delta_count<remaining?delta_count:remaining;
+        }
         encoder->last_edge_tick_ms = now_ms;
         encoder->pulse_seen = 1U;
         /* Fault remains latched even if one noise pulse appears. */
@@ -882,26 +892,28 @@ static void WheelEncoder_UpdateOne(
     {
       encoder->rejected_samples++;
       encoder->speed_valid=0U;
-      encoder->no_pulse_fault |= 2U; /* implausible pulse rate; requires explicit clear */
+      encoder->recovery_pulses=0U;
+      encoder->fault_flags |= 2U; /* implausible pulse rate; requires explicit clear */
     }
 
     encoder->previous_count = current_count;
     encoder->previous_tick_ms = now_ms;
 
-    if (motor_command[axis] < ENCODER_MONITOR_MIN_PWM
-        && motor_command[axis] > -ENCODER_MONITOR_MIN_PWM)
-    {
-      encoder->last_pulse_tick_ms=now_ms;
-    }
-
-    if (((motor_command[axis] >= ENCODER_MONITOR_MIN_PWM)
-         || (motor_command[axis] <= -ENCODER_MONITOR_MIN_PWM))
-        && ((now_ms - encoder->last_pulse_tick_ms)
-            >= ENCODER_NO_PULSE_TIMEOUT_MS))
-    {
-      encoder->no_pulse_fault |= 1U;
-    }
+    /* Operator-selected policy: zero/missing pulses never latch a fault or
+       inhibit PWM. Keep RPM/count diagnostics; invalid-rate and overspeed
+       checks are separate and unchanged. */
   }
+}
+
+static uint8_t WheelEncoder_CanClear(MotorAxis_t axis)
+{
+  const WheelEncoder_t *encoder=&wheel_encoder[axis];
+  if(pid_enabled[axis] || motor_command[axis])return 0U;
+  /* Each faulted wheel must produce one plausible revolution while disarmed.
+     Keep that evidence until explicit clear, allowing sequential hand checks
+     instead of requiring all three wheels to pulse within the same1second. */
+  return !encoder->fault_flags ||
+      (encoder->speed_valid && encoder->recovery_pulses>=ENCODER_CLEAR_VERIFY_PULSES);
 }
 
 static void WheelEncoders_Update(uint32_t now_ms)
@@ -1025,14 +1037,14 @@ static HAL_StatusTypeDef MPU6050_Init(uint8_t *who_am_i)
     return HAL_ERROR;
   }
 
-  /* Digital Low-Pass Filter */
-  if (MPU6050_Write(MPU6050_CONFIG, 0x03) != HAL_OK)
+  /* ~92/98Hz gyro LPF; lower delay than the former41/42Hz setting. */
+  if (MPU6050_Write(MPU6050_CONFIG, 0x02) != HAL_OK)
   {
     return HAL_ERROR;
   }
 
-  /* Gyroscope ±250 độ/giây */
-  if (MPU6050_Write(MPU6050_GYRO_CONFIG, 0x00) != HAL_OK)
+  /* +/-1000dps,32.8LSB/dps. Saved gyro bias is already rad/s, not raw counts. */
+  if (MPU6050_Write(MPU6050_GYRO_CONFIG, 0x10) != HAL_OK)
   {
     return HAL_ERROR;
   }
@@ -1042,6 +1054,14 @@ static HAL_StatusTypeDef MPU6050_Init(uint8_t *who_am_i)
   {
     return HAL_ERROR;
   }
+
+  /* WHO0x70 uses the separate accelerometer LPF register. Leaving it at
+     reset default gave a much wider accel bandwidth than the gyro. */
+  if(*who_am_i==0x70 && MPU6050_Write(MPU6500_ACCEL_CONFIG2,0x02)!=HAL_OK)return HAL_ERROR;
+  uint8_t check=0;
+  if(MPU6050_Read(MPU6050_GYRO_CONFIG,&check,1)!=HAL_OK || (check&0x1BU)!=0x10U)return HAL_ERROR;
+  if(MPU6050_Read(MPU6050_CONFIG,&check,1)!=HAL_OK || (check&7U)!=2U)return HAL_ERROR;
+  if(*who_am_i==0x70 && (MPU6050_Read(MPU6500_ACCEL_CONFIG2,&check,1)!=HAL_OK || (check&0x0FU)!=2U))return HAL_ERROR;
 
   App_Wait(50);
 
@@ -2401,7 +2421,7 @@ static void AttitudeEKF_AccelerometerUpdate(float ax, float ay, float az)
   float direction_dot = measurement[0] * predicted[0]
                       + measurement[1] * predicted[1]
                       + measurement[2] * predicted[2];
-  if (direction_dot < ACCEL_INNOVATION_MIN_DOT)
+  if (direction_dot < ACCEL_INNOVATION_MIN_DOT && !attitude_ekf.stationary)
   {
     attitude_ekf.accel_rejected++;
     return;
@@ -2433,6 +2453,16 @@ static void AttitudeEKF_AccelerometerUpdate(float ax, float ay, float az)
   float acceleration_error = norm_g - 1.0f;
   float measurement_variance = EKF_ACCEL_NOISE * EKF_ACCEL_NOISE
                              + 0.5f * acceleration_error * acceleration_error;
+  /* During motion, a gravity-direction residual can be external acceleration
+     (including vibration/lever-arm force), even if |a| remains near1g.
+     Robust Cauchy weighting:30mg design scale, at most25x nominal variance.
+     Quiet confirmed samples regain nominal weight and allow bounded recovery. */
+  if(!attitude_ekf.stationary) {
+    float energy=innovation[0]*innovation[0]+innovation[1]*innovation[1]+innovation[2]*innovation[2];
+    float scale=1.0f+fminf(24.0f,energy/(ACCEL_DYNAMIC_RESIDUAL_G*ACCEL_DYNAMIC_RESIDUAL_G));
+    measurement_variance*=scale;
+  }
+  attitude_ekf.accel_observation_variance=measurement_variance;
   for (uint32_t row = 0; row < 3U; row++)
   {
     for (uint32_t column = 0; column < 3U; column++)
@@ -2481,6 +2511,15 @@ static void AttitudeEKF_AccelerometerUpdate(float ax, float ay, float az)
   }
   for(unsigned row=0;row<6;row++)for(unsigned column=0;column<3;column++)
     correction[row]+=gain[row][column]*innovation[column];
+
+  float correction_norm=sqrtf(correction[0]*correction[0]+correction[1]*correction[1]+correction[2]*correction[2]);
+  if(correction_norm>ACCEL_MAX_CORRECTION_RAD) {
+    float fraction=ACCEL_MAX_CORRECTION_RAD/correction_norm;
+    for(unsigned row=0;row<6;row++) {
+      correction[row]*=fraction;
+      for(unsigned column=0;column<3;column++)gain[row][column]*=fraction;
+    }
+  }
 
   /* Right-multiplicative small-angle correction q <- q * dq. */
   float old_q[4] = {q[0], q[1], q[2], q[3]};
@@ -2898,7 +2937,7 @@ static void AttitudeEKF_MagnetometerUpdate(const float body_mag[3])
   uint8_t stable_clean=(clean_heading_samples>=25U)?1U:0U;
   float noise=Heading_NoiseVariance(field_ratio,motor_activity,stable_clean);
   if(!Heading_Update(attitude_ekf.covariance,gravity_body,heading_error_rad,
-                     noise,quiet && stable_clean,correction,bias_correction))
+                     noise,quiet && stable_clean && attitude_ekf.stationary,correction,bias_correction))
   {
     mag_reject_reason=4U;attitude_ekf.mag_rejected++;clean_heading_samples=0U;magnetic_heading_quality=0U;return;
   }
@@ -2965,6 +3004,11 @@ static void AttitudeEKF_Update(
   SensorToBodyGyroRad((float)gx, (float)gy, (float)gz, angular_rate_rad_s);
   SensorToBodyAccel((float)ax, (float)ay, (float)az, body_accel_raw);
 
+  if(gx>=32700 || gx<=-32700 || gy>=32700 || gy<=-32700 || gz>=32700 || gz<=-32700)
+    if(attitude_ekf.gyro_clipped_samples<UINT32_MAX)attitude_ekf.gyro_clipped_samples++;
+  if(ax>=32700 || ax<=-32700 || ay>=32700 || ay<=-32700 || az>=32700 || az<=-32700)
+    if(attitude_ekf.accel_clipped_samples<UINT32_MAX)attitude_ekf.accel_clipped_samples++;
+
   attitude_ekf.last_dt_us = (uint32_t)(dt * 1000000.0f + 0.5f);
   float accel_norm_g = sqrtf(
       body_accel_raw[0] * body_accel_raw[0]
@@ -2977,9 +3021,18 @@ static void AttitudeEKF_Update(
     corrected_gyro_magnitude_sq += corrected * corrected;
   }
   float corrected_gyro_dps = sqrtf(corrected_gyro_magnitude_sq) * RAD_TO_DEG;
+  float accel_change_sq=0;
+  for(unsigned i=0;i<3;i++) {
+    float change=body_accel_raw[i]-attitude_ekf.previous_accel_raw[i];
+    accel_change_sq+=change*change;
+    attitude_ekf.previous_accel_raw[i]=body_accel_raw[i];
+  }
+  uint8_t stable_accel=!attitude_ekf.accel_history_valid ||
+      accel_change_sq<(.02f*ACCEL_LSB_PER_G)*(.02f*ACCEL_LSB_PER_G);
+  attitude_ekf.accel_history_valid=1U;
   uint32_t now_ms = HAL_GetTick();
   if ((fabsf(accel_norm_g - 1.0f) <= STATIONARY_ACCEL_TOL_G)
-      && (corrected_gyro_dps <= STATIONARY_GYRO_DPS))
+      && stable_accel && (corrected_gyro_dps <= STATIONARY_GYRO_DPS))
   {
     if (attitude_ekf.stationary_since_ms == 0U)
     {
@@ -3004,20 +3057,7 @@ static void AttitudeEKF_Update(
   }
 
   float *q = attitude_ekf.q;
-  float old_q[4] = {q[0], q[1], q[2], q[3]};
-  float half_dt = 0.5f * dt;
-  q[0] = old_q[0] - half_dt * (old_q[1] * angular_rate_rad_s[0]
-                              + old_q[2] * angular_rate_rad_s[1]
-                              + old_q[3] * angular_rate_rad_s[2]);
-  q[1] = old_q[1] + half_dt * (old_q[0] * angular_rate_rad_s[0]
-                              + old_q[2] * angular_rate_rad_s[2]
-                              - old_q[3] * angular_rate_rad_s[1]);
-  q[2] = old_q[2] + half_dt * (old_q[0] * angular_rate_rad_s[1]
-                              - old_q[1] * angular_rate_rad_s[2]
-                              + old_q[3] * angular_rate_rad_s[0]);
-  q[3] = old_q[3] + half_dt * (old_q[0] * angular_rate_rad_s[2]
-                              + old_q[1] * angular_rate_rad_s[1]
-                              - old_q[2] * angular_rate_rad_s[0]);
+  ADCS_IntegrateBodyRate(q,angular_rate_rad_s,dt);
   QuaternionNormalize(q);
 
   AttitudeEKF_PropagateCovariance(angular_rate_rad_s, dt);
@@ -3172,7 +3212,7 @@ static int32_t WheelSpeedControl_Update(
 
   if ((control->gains_configured == 0U)
       || (encoder->speed_valid == 0U)
-      || (encoder->no_pulse_fault != 0U))
+      || (encoder->fault_flags != 0U))
   {
     control->integral = 0.0f;
     control->p_term = 0.0f;
@@ -3512,9 +3552,9 @@ int main(void)
 	          pid_enabled[MOTOR_AXIS_PITCH],
 	          pid_enabled[MOTOR_AXIS_YAW],
 	          emergency_stop,
-	          wheel_encoder[MOTOR_AXIS_ROLL].no_pulse_fault,
-	          wheel_encoder[MOTOR_AXIS_PITCH].no_pulse_fault,
-	          wheel_encoder[MOTOR_AXIS_YAW].no_pulse_fault,
+	          wheel_encoder[MOTOR_AXIS_ROLL].fault_flags,
+	          wheel_encoder[MOTOR_AXIS_PITCH].fault_flags,
+	          wheel_encoder[MOTOR_AXIS_YAW].fault_flags,
 	          wheel_encoder[MOTOR_AXIS_ROLL].overspeed_limited,
 	          wheel_encoder[MOTOR_AXIS_PITCH].overspeed_limited,
 	          wheel_encoder[MOTOR_AXIS_YAW].overspeed_limited,
@@ -3704,22 +3744,18 @@ int main(void)
 	    }
 	    else if (usb_command == USB_COMMAND_ENCODER_CLEAR)
 	    {
-	      uint32_t clear_tick = HAL_GetTick();
 	      uint8_t can_clear=1U;
 	      for(unsigned axis=0;axis<MOTOR_AXIS_COUNT;axis++) {
-	        if(pid_enabled[axis] || motor_command[axis])can_clear=0U;
-	        if(wheel_encoder[axis].no_pulse_fault && (!wheel_encoder[axis].pulse_seen
-	            || clear_tick-wheel_encoder[axis].last_edge_tick_ms>1000U
-	            || !wheel_encoder[axis].speed_valid))can_clear=0U;
+	        if(!WheelEncoder_CanClear((MotorAxis_t)axis))can_clear=0U;
 	      }
 	      if(!can_clear) {
-	        const uint8_t error[]="NACK CMD=ENCODER_CLEAR REASON=DISARM_AND_VERIFY_PULSES\r\n";
+	        const uint8_t error[]="NACK CMD=ENCODER_CLEAR REASON=DISARM_AND_VERIFY_25_PULSES_PER_FAULTED_AXIS\r\n";
 	        TelemetryProtocol_Event(error,sizeof(error)-1U);
 	      } else {
 	      for (uint32_t axis = 0U; axis < MOTOR_AXIS_COUNT; axis++)
 	      {
-	        wheel_encoder[axis].no_pulse_fault = 0U;
-	        wheel_encoder[axis].last_pulse_tick_ms = clear_tick;
+	        wheel_encoder[axis].fault_flags = 0U;
+	        wheel_encoder[axis].recovery_pulses = 0U;
 	      }
 	      static uint8_t clear_encoder_message[] =
 	          "ACK CMD=ENCODER_CLEAR FAULT=0,0,0\r\n";
@@ -4227,20 +4263,21 @@ static void App_BuildSnapshot(TelemetryData *s)
     s->p_term[i]=(int32_t)(axis[i]->p_term*1000);s->i_term[i]=(int32_t)(axis[i]->i_term*1000);s->d_term[i]=(int32_t)(axis[i]->d_term*1000);
     s->rpm_signed[i]=(int32_t)(wheel_encoder[i].signed_rpm_estimate*1000);s->rpm_target[i]=(int32_t)(wheel_speed_control[i].setpoint_rpm*1000);
     s->rpm_error[i]=s->rpm_target[i]-s->rpm_signed[i];s->rpm_limit[i]=(int32_t)(wheel_rpm_limit[i]*1000);
-    s->encoder_valid[i]=wheel_encoder[i].speed_valid;s->encoder_fault[i]=wheel_encoder[i].no_pulse_fault;s->encoder_limit[i]=wheel_encoder[i].overspeed_limited;
+    s->encoder_valid[i]=wheel_encoder[i].speed_valid;s->encoder_fault[i]=wheel_encoder[i].fault_flags;s->encoder_limit[i]=wheel_encoder[i].overspeed_limited;
+    s->encoder_recovery[i]=wheel_encoder[i].recovery_pulses;
     s->wheel_ready[i]=wheel_speed_control[i].gains_configured;s->wheel_kp[i]=(int32_t)(wheel_speed_control[i].kp*1000000);
     s->wheel_ki[i]=(int32_t)(wheel_speed_control[i].ki*1000000);s->wheel_kd[i]=(int32_t)(wheel_speed_control[i].kd*1000000);s->pid[i]=pid_enabled[i];
     /* Requested state and output permission are intentionally separate. */
     s->pid_block[i]=(emergency_stop?1U:0U)|(mpu_status!=HAL_OK || s->imu_age_ms>20U?2U:0U)
         |(fusion_status!=HAL_OK?4U:0U)|(app_busy || accel_calibration.active?8U:0U)
-        |(wheel_encoder[i].no_pulse_fault?16U:0U)|(!wheel_encoder[i].speed_valid?32U:0U)
+        |(wheel_encoder[i].fault_flags?16U:0U)|(!wheel_encoder[i].speed_valid?32U:0U)
         |(wheel_encoder[i].overspeed_limited?64U:0U)
         |(control_timing_paused && (int32_t)(s->uptime_ms-control_pause_until_ms)<0?128U:0U);
     s->pid_active[i]=pid_enabled[i] && !s->pid_block[i];
   }
-  /* Hardware confirmed: Pitch=PC6, Yaw=PA0; Roll not installed. This
-   * reports presence without bypassing motor/encoder fault supervision. */
-  s->encoder_installed[0]=0U;s->encoder_installed[1]=1U;s->encoder_installed[2]=1U;
+  /* Operator confirmed: Roll=PA8, Pitch=PC6, Yaw=PA0, all 25 pulses/rev.
+   * Presence reporting does not bypass motor/encoder fault supervision. */
+  s->encoder_installed[0]=1U;s->encoder_installed[1]=1U;s->encoder_installed[2]=1U;
   s->encoder_pin[0]=(GPIOA->IDR & GPIO_PIN_8)?1U:0U;
   s->encoder_pin[1]=(GPIOC->IDR & GPIO_PIN_6)?1U:0U;
   s->encoder_pin[2]=(GPIOA->IDR & GPIO_PIN_0)?1U:0U;
@@ -4277,6 +4314,8 @@ static void App_BuildSnapshot(TelemetryData *s)
   s->sensor_error=(mpu_status!=HAL_OK?1U:0U)|(mag_status!=HAL_OK?2U:0U)|(fusion_status!=HAL_OK?4U:0U)
       |(bmp280_status!=HAL_OK?8U:0U)|(ina219_status!=HAL_OK?16U:0U)|(aht30_status!=HAL_OK?32U:0U);
   s->dt_us=attitude_ekf.last_dt_us;s->control_dt_us=control_actual_dt_us;s->control_late=control_late;
+  s->gyro_clip_count=attitude_ekf.gyro_clipped_samples;s->accel_clip_count=attitude_ekf.accel_clipped_samples;
+  s->accel_noise_u6=(uint32_t)(attitude_ekf.accel_observation_variance*1000000.0f);
   s->stationary=attitude_ekf.stationary;s->estop=emergency_stop;s->charging=system_mode==SYSTEM_MODE_CHARGING;s->speed_mode=control_mode==CONTROL_MODE_WHEEL_SPEED_TEST;
 }
 

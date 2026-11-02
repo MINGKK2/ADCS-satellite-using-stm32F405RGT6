@@ -1,0 +1,179 @@
+<mxfile host="app.diagrams.net" type="device">
+  <diagram id="2In2aaiaiEqDpQosA3EB" name="PID 3 trục - V9">
+    <mxGraphModel dx="1900" dy="1200" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2120" pageHeight="1400" math="0" shadow="0" background="#ffffff">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" parent="1" vertex="1" value="ĐIỀU KHIỂN TƯ THẾ 3 TRỤC — REACTION WHEEL" style="rounded=1;whiteSpace=wrap;html=0;fontFamily=Arial;fontSize=34;fontColor=#172b4d;fillColor=none;strokeColor=none;strokeWidth=2;spacing=12;rounded=0;">
+          <mxGeometry as="geometry" x="40" y="25" width="2000" height="55" />
+        </mxCell>
+        <mxCell id="subtitle" parent="1" vertex="1" value="Theo firmware AXIS_FRAME_RP_DYN_V9 • ATTITUDE / FIXED_PID • Một cấu trúc P–I–D cho mỗi trục Roll, Pitch, Yaw" style="rounded=1;whiteSpace=wrap;html=0;fontFamily=Arial;fontSize=23;fontColor=#172b4d;fillColor=none;strokeColor=none;strokeWidth=2;spacing=12;rounded=0;">
+          <mxGeometry as="geometry" x="40" y="85" width="2000" height="45" />
+        </mxCell>
+        <mxCell id="target" parent="1" vertex="1" value="GIÁ TRỊ ĐẶT&#10;Roll φref, Pitch θref&#10;Yaw ψref [°]&#10;→ quaternion qref" style="rounded=1;whiteSpace=wrap;html=0;fontFamily=Arial;fontSize=21;fontColor=#172b4d;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;spacing=12;">
+          <mxGeometry as="geometry" x="40" y="280" width="200" height="150" />
+        </mxCell>
+        <mxCell id="error" parent="1" vertex="1" value="SAI SỐ TƯ THẾ&#10;qe = conj(qđo) ⊗ qref&#10;Chọn phép quay ngắn nhất&#10;→ vector sai số hệ thân e [°]" style="rounded=1;whiteSpace=wrap;html=0;fontFamily=Arial;fontSize=21;fontColor=#172b4d;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;spacing=12;">
+          <mxGeometry as="geometry" x="300" y="265" width="260" height="175" />
+        </mxCell>
+        <mxCell id="axis" parent="1" vertex="1" value="eR = ex; eP = ey&#10;eY = âyaw · e" style="rounded=1;whiteSpace=wrap;html=0;fontFamily=Arial;fontSize=20;fontColor=#172b4d;fillColor=none;strokeColor=none;strokeWidth=2;spacing=12;rounded=0;">
+          <mxGeometry as="geometry" x="300" y="190" width="260" height="65" />
+        </mxCell>
+        <mxCell id="p" parent="1" vertex="1" value="NHÁNH P&#10;P = Kp · eᵢ&#10;Kp = 11,6667 PWM/°" style="rounded=1;whiteSpace=wrap;html=0;fontFamily=Arial;fontSize=21;fontColor=#172b4d;fillColor=#fff2cc;strokeColor=#d6b656;strokeWidth=2;spacing=12;">
+          <mxGeometry as="geometry" x="660" y="175" width="260" height="100" />
+        </mxCell>
+        <mxCell id="i" parent="1" vertex="1" value="NHÁNH I + ANTI-WINDUP&#10;Ic = clamp(Ik−1 + eᵢΔt, ±80)&#10;Ik: tích phân có điều kiện&#10;I = Ki·Ik; Ki = 5 PWM/(°·s)" style="rounded=1;whiteSpace=wrap;html=0;fontFamily=Arial;fontSize=17;fontColor=#172b4d;fillColor=#fff2cc;strokeColor=#d6b656;strokeWidth=2;spacing=12;">
+          <mxGeometry as="geometry" x="660" y="310" width="260" height="140" />
+        </mxCell>
+        <mxCell id="d" parent="1" vertex="1" value="NHÁNH D TỪ GYRO&#10;ωf,k = 0,8·ωf,k−1 + 0,2·ωᵢ,k&#10;D = −Kd · ωf,k&#10;Kd = 8 PWM/(°/s)" style="rounded=1;whiteSpace=wrap;html=0;fontFamily=Arial;fontSize=17;fontColor=#172b4d;fillColor=#fff2cc;strokeColor=#d6b656;strokeWidth=2;spacing=12;">
+          <mxGeometry as="geometry" x="660" y="495" width="260" height="130" />
+        </mxCell>
+        <mxCell id="sum" parent="1" vertex="1" value="Σ&#10;P + I + D" style="rounded=1;whiteSpace=wrap;html=0;fontFamily=Arial;fontSize=16;fontColor=#172b4d;fillColor=#fff2cc;strokeColor=#d6b656;strokeWidth=2;spacing=12;ellipse;aspect=fixed;spacing=2;">
+          <mxGeometry as="geometry" x="1000" y="340" width="85" height="85" />
+        </mxCell>
+        <mxCell id="limit" parent="1" vertex="1" value="GIỚI HẠN + CHIỀU MOTOR&#10;v = clamp(P+I+D, ±255)&#10;uᵢ = sᵢ·v&#10;sRoll = +1; sPitch = +1&#10;sYaw = −1" style="rounded=1;whiteSpace=wrap;html=0;fontFamily=Arial;fontSize=18;fontColor=#172b4d;fillColor=#ffe6cc;strokeColor=#d79b00;strokeWidth=2;spacing=12;">
+          <mxGeometry as="geometry" x="1150" y="310" width="240" height="145" />
+        </mxCell>
+        <mxCell id="guard" parent="1" vertex="1" value="GIÁM SÁT ĐẦU RA&#10;PID từng trục / ESTOP&#10;IMU, timing, encoder hợp lệ&#10;Giới hạn RPM bánh đà&#10;→ PWM thực được phép xuất" style="rounded=1;whiteSpace=wrap;html=0;fontFamily=Arial;fontSize=18;fontColor=#172b4d;fillColor=#f8cecc;strokeColor=#b85450;strokeWidth=2;spacing=12;">
+          <mxGeometry as="geometry" x="1460" y="290" width="250" height="180" />
+        </mxCell>
+        <mxCell id="enable" parent="1" vertex="1" value="NGƯỜI VẬN HÀNH: PID ON/OFF TỪNG TRỤC + ESTOP&#10;Yêu cầu PID và PWM thực là hai trạng thái riêng biệt" style="rounded=1;whiteSpace=wrap;html=0;fontFamily=Arial;fontSize=18;fontColor=#172b4d;fillColor=#f8cecc;strokeColor=#b85450;strokeWidth=2;spacing=12;">
+          <mxGeometry as="geometry" x="1460" y="155" width="580" height="85" />
+        </mxCell>
+        <mxCell id="driver" parent="1" vertex="1" value="XUẤT PWM + DIR&#10;TIM3 → L298N × 2&#10;→ Motor DC × 3&#10;→ Bánh đà Roll / Pitch / Yaw&#10;|PWM| = 0…255" style="rounded=1;whiteSpace=wrap;html=0;fontFamily=Arial;fontSize=18;fontColor=#172b4d;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=2;spacing=12;">
+          <mxGeometry as="geometry" x="1780" y="290" width="260" height="180" />
+        </mxCell>
+        <mxCell id="encoder" parent="1" vertex="1" value="ENCODER BÁNH ĐÀ × 3&#10;1 kênh; 25 xung/vòng&#10;RPM = ΔN·60 / (25·Δt [s])&#10;Cập nhật 50 ms; LPF&#10;Chỉ đo độ lớn tốc độ" style="rounded=1;whiteSpace=wrap;html=0;fontFamily=Arial;fontSize=18;fontColor=#172b4d;fillColor=#e1d5e7;strokeColor=#9673a6;strokeWidth=2;spacing=12;">
+          <mxGeometry as="geometry" x="1780" y="555" width="260" height="150" />
+        </mxCell>
+        <mxCell id="plant" parent="1" vertex="1" value="THÂN VỆ TINH 3 DOF&#10;Mô-men phản lực do bánh đà&#10;τthân ≈ −Jw·dωw/dt&#10;→ Tư thế q và tốc độ góc ω" style="rounded=1;whiteSpace=wrap;html=0;fontFamily=Arial;fontSize=18;fontColor=#172b4d;fillColor=#e1d5e7;strokeColor=#9673a6;strokeWidth=2;spacing=12;">
+          <mxGeometry as="geometry" x="1780" y="795" width="260" height="155" />
+        </mxCell>
+        <mxCell id="sensors" parent="1" vertex="1" value="CẢM BIẾN GẮN TRÊN THÂN&#10;IMU: accel + gyro&#10;La bàn GY-511: từ trường&#10;I²C1: PB6 SCL / PB7 SDA" style="rounded=1;whiteSpace=wrap;html=0;fontFamily=Arial;fontSize=21;fontColor=#172b4d;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;spacing=12;">
+          <mxGeometry as="geometry" x="1380" y="795" width="300" height="155" />
+        </mxCell>
+        <mxCell id="estimate" parent="1" vertex="1" value="HIỆU CHUẨN + ƯỚC LƯỢNG EKF&#10;Calib/bias lưu Flash; ánh xạ hệ trục thân&#10;Gyro dự đoán quaternion; accel sửa nghiêng&#10;La bàn sửa heading khi dữ liệu đạt chất lượng&#10;Đầu ra: qđo và gyro thân đã trừ bias" style="rounded=1;whiteSpace=wrap;html=0;fontFamily=Arial;fontSize=18;fontColor=#172b4d;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;spacing=12;">
+          <mxGeometry as="geometry" x="800" y="785" width="420" height="175" />
+        </mxCell>
+        <mxCell id="cycle" parent="1" vertex="1" value="CHU KỲ TƯ THẾ / PID: danh định 5 ms (200 Hz), dùng Δt đo thực tế • Telemetry hiển thị 20 Hz" style="rounded=1;whiteSpace=wrap;html=0;fontFamily=Arial;fontSize=22;fontColor=#172b4d;fillColor=none;strokeColor=none;strokeWidth=2;spacing=12;rounded=0;">
+          <mxGeometry as="geometry" x="40" y="965" width="2000" height="40" />
+        </mxCell>
+        <mxCell id="pins" parent="1" vertex="1" value="ÁNH XẠ PHẦN CỨNG HIỆN TẠI&#10;Roll: PWM PA6 / TIM3_CH1 → ENA; IN1 PC4, IN2 PC5; encoder PA8&#10;Pitch: PWM PA7 / TIM3_CH2 → ENB; IN3 PB12, IN4 PB13; encoder PC6&#10;Yaw: PWM PB0 / TIM3_CH3 → ENA; IN1 PB1, IN2 PB8; encoder PA0&#10;u &gt; 0: IN thứ nhất HIGH, IN thứ hai LOW; u &lt; 0: đảo lại; u = 0: EN=0, cả hai IN LOW" style="rounded=1;whiteSpace=wrap;html=0;fontFamily=Arial;fontSize=21;fontColor=#172b4d;fillColor=#f5f5f5;strokeColor=#666666;strokeWidth=2;spacing=12;align=left;spacingLeft=22;">
+          <mxGeometry as="geometry" x="40" y="1030" width="1180" height="220" />
+        </mxCell>
+        <mxCell id="notes" parent="1" vertex="1" value="VAI TRÒ RPM VÀ GIỚI HẠN HIỆN TẠI&#10;• RPM → telemetry + giới hạn tốc độ (mặc định 4800 rpm).&#10;• Chưa có vòng PID RPM lồng trong vòng tư thế; encoder&#10;  một kênh không xác định được chiều quay độc lập.&#10;• Không dừng motor chỉ vì mất xung (V8/V9 đã bỏ).&#10;• Nếu PWM thực bị chặn/đổi: xóa tích phân trục tương ứng.&#10;• Gain hiện tại là cấu hình đang dùng, chưa khẳng định tối ưu." style="rounded=1;whiteSpace=wrap;html=0;fontFamily=Arial;fontSize=20;fontColor=#172b4d;fillColor=#f5f5f5;strokeColor=#666666;strokeWidth=2;spacing=12;align=left;spacingLeft=20;">
+          <mxGeometry as="geometry" x="1290" y="1030" width="750" height="220" />
+        </mxCell>
+        <mxCell id="e01" parent="1" edge="1" source="target" target="error" value="qref" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=0;endArrow=block;endFill=1;strokeWidth=2.5;strokeColor=#2563eb;fontFamily=Arial;fontSize=19;fontColor=#172b4d;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;entryX=0;entryY=0.5;">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="e02" parent="1" edge="1" source="error" target="p" value="eᵢ" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=0;endArrow=block;endFill=1;strokeWidth=2.5;strokeColor=#d97706;fontFamily=Arial;fontSize=19;fontColor=#172b4d;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;entryX=0;entryY=0.5;">
+          <mxGeometry as="geometry" relative="1">
+            <mxPoint as="offset" x="0" y="-13" />
+            <Array as="points">
+              <mxPoint x="610" y="352" />
+              <mxPoint x="610" y="225" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e03" parent="1" edge="1" source="error" target="i" value="eᵢ" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=0;endArrow=block;endFill=1;strokeWidth=2.5;strokeColor=#d97706;fontFamily=Arial;fontSize=19;fontColor=#172b4d;labelBackgroundColor=#ffffff;exitX=1;exitY=0.65;entryX=0;entryY=0.5;">
+          <mxGeometry as="geometry" relative="1">
+            <Array as="points">
+              <mxPoint x="610" y="380" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e04" parent="1" edge="1" source="p" target="sum" value="P" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=0;endArrow=block;endFill=1;strokeWidth=2.5;strokeColor=#d97706;fontFamily=Arial;fontSize=19;fontColor=#172b4d;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;entryX=0.5;entryY=0;">
+          <mxGeometry as="geometry" relative="1">
+            <Array as="points">
+              <mxPoint x="1042" y="225" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e05" parent="1" edge="1" source="i" target="sum" value="I" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=0;endArrow=block;endFill=1;strokeWidth=2.5;strokeColor=#d97706;fontFamily=Arial;fontSize=19;fontColor=#172b4d;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;entryX=0;entryY=0.5;">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="e06" parent="1" edge="1" source="d" target="sum" value="D" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=0;endArrow=block;endFill=1;strokeWidth=2.5;strokeColor=#d97706;fontFamily=Arial;fontSize=19;fontColor=#172b4d;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;entryX=0.5;entryY=1;">
+          <mxGeometry as="geometry" relative="1">
+            <Array as="points">
+              <mxPoint x="1042" y="560" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e07" parent="1" edge="1" source="sum" target="limit" value="u thô" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=0;endArrow=block;endFill=1;strokeWidth=2.5;strokeColor=#d97706;fontFamily=Arial;fontSize=19;fontColor=#172b4d;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;entryX=0;entryY=0.5;">
+          <mxGeometry as="geometry" relative="1">
+            <mxPoint as="offset" x="0" y="-16" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e08" parent="1" edge="1" source="limit" target="guard" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=0;endArrow=block;endFill=1;strokeWidth=2.5;strokeColor=#d97706;fontFamily=Arial;fontSize=19;fontColor=#172b4d;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;entryX=0;entryY=0.5;">
+          <mxGeometry as="geometry" relative="1">
+            <mxPoint as="offset" x="0" y="-17" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e09" parent="1" edge="1" source="guard" target="driver" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=0;endArrow=block;endFill=1;strokeWidth=2.5;strokeColor=#15803d;fontFamily=Arial;fontSize=19;fontColor=#172b4d;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;entryX=0;entryY=0.5;">
+          <mxGeometry as="geometry" relative="1">
+            <mxPoint as="offset" x="0" y="-17" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e10" parent="1" edge="1" source="enable" target="guard" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=0;endArrow=block;endFill=1;strokeWidth=2.5;strokeColor=#b85450;fontFamily=Arial;fontSize=19;fontColor=#172b4d;labelBackgroundColor=#ffffff;exitX=0.2155;exitY=1;entryX=0.5;entryY=0;">
+          <mxGeometry as="geometry" relative="1" />
+        </mxCell>
+        <mxCell id="e11" parent="1" edge="1" source="driver" target="plant" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=0;endArrow=block;endFill=1;strokeWidth=2.5;strokeColor=#15803d;fontFamily=Arial;fontSize=19;fontColor=#172b4d;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;entryX=1;entryY=0.5;">
+          <mxGeometry as="geometry" relative="1">
+            <mxPoint as="offset" x="0" y="-15" />
+            <Array as="points">
+              <mxPoint x="2080" y="380" />
+              <mxPoint x="2080" y="872" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e12" parent="1" edge="1" source="driver" target="encoder" value="tốc độ bánh đà" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=0;endArrow=block;endFill=1;strokeWidth=2.5;strokeColor=#7c3aed;fontFamily=Arial;fontSize=19;fontColor=#172b4d;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.5;entryY=0;">
+          <mxGeometry as="geometry" relative="1">
+            <mxPoint as="offset" x="0" y="-12" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e13" parent="1" edge="1" source="encoder" target="guard" value="|RPM| / trạng thái" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=0;endArrow=block;endFill=1;strokeWidth=2.5;strokeColor=#7c3aed;fontFamily=Arial;fontSize=19;fontColor=#172b4d;labelBackgroundColor=#ffffff;exitX=0;exitY=0.5;entryX=0.5;entryY=1;">
+          <mxGeometry as="geometry" relative="1">
+            <mxPoint as="offset" x="0" y="-18" />
+            <Array as="points">
+              <mxPoint x="1740" y="630" />
+              <mxPoint x="1585" y="630" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e14" parent="1" edge="1" source="plant" target="sensors" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=0;endArrow=block;endFill=1;strokeWidth=2.5;strokeColor=#2563eb;fontFamily=Arial;fontSize=19;fontColor=#172b4d;labelBackgroundColor=#ffffff;exitX=0;exitY=0.5;entryX=1;entryY=0.5;">
+          <mxGeometry as="geometry" relative="1">
+            <mxPoint as="offset" x="0" y="-20" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e15" parent="1" edge="1" source="sensors" target="estimate" value="a, ω, m" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=0;endArrow=block;endFill=1;strokeWidth=2.5;strokeColor=#2563eb;fontFamily=Arial;fontSize=19;fontColor=#172b4d;labelBackgroundColor=#ffffff;exitX=0;exitY=0.5;entryX=1;entryY=0.5;">
+          <mxGeometry as="geometry" relative="1">
+            <mxPoint as="offset" x="0" y="-17" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e16" parent="1" edge="1" source="estimate" target="error" value="qđo: phản hồi tư thế" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=0;endArrow=block;endFill=1;strokeWidth=2.5;strokeColor=#2563eb;fontFamily=Arial;fontSize=19;fontColor=#172b4d;labelBackgroundColor=#ffffff;exitX=0.25;exitY=0;entryX=0.5;entryY=1;">
+          <mxGeometry as="geometry" relative="1">
+            <mxPoint as="offset" x="0" y="-17" />
+            <Array as="points">
+              <mxPoint x="905" y="720" />
+              <mxPoint x="430" y="720" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e17" parent="1" edge="1" source="estimate" target="d" value="ωᵢ [°/s]: Roll/Pitch theo trục thân; Yaw chiếu lên âyaw" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=0;endArrow=block;endFill=1;strokeWidth=2.5;strokeColor=#2563eb;fontFamily=Arial;fontSize=19;fontColor=#172b4d;labelBackgroundColor=#ffffff;exitX=0.75;exitY=0;entryX=0;entryY=0.5;">
+          <mxGeometry as="geometry" relative="1">
+            <mxPoint as="offset" x="0" y="-18" />
+            <Array as="points">
+              <mxPoint x="1115" y="665" />
+              <mxPoint x="610" y="665" />
+              <mxPoint x="610" y="560" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="aw" parent="1" vertex="1" value="Tích phân có điều kiện: giữ Ik−1 khi đầu ra đã bão hòa và sai số còn đẩy cùng chiều.&#10;Khi tắt PID: xóa tích phân và P/I/D. Nhánh D dùng tốc độ góc thân, không dùng RPM bánh đà." style="rounded=1;whiteSpace=wrap;html=0;fontFamily=Arial;fontSize=20;fontColor=#172b4d;fillColor=none;strokeColor=none;strokeWidth=2;spacing=12;rounded=0;">
+          <mxGeometry as="geometry" x="40" y="1280" width="2000" height="55" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

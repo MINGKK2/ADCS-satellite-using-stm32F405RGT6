@@ -1,0 +1,67 @@
+{
+  "firmware": "AXIS_FRAME_RP_DYN_V9",
+  "published_local_date": "2026-11-02",
+  "full_build_ok": true,
+  "full_regression_ok": true,
+  "flash_verified": true,
+  "runtime_verified_over_s3": true,
+  "calibration_sector11_unchanged": true,
+  "motor_test_performed": false,
+  "pid_enabled_by_agent": false,
+  "hardware_absolute_attitude_accuracy_verified": false,
+  "elf_load_end": "0x0801E4A0",
+  "gyro_full_scale_dps": 1000,
+  "gains": {
+    "Kp": 11.666666666666668,
+    "Ki": 5,
+    "Kd": 8
+  },
+  "no_pulse_stop_enabled": false,
+  "files": {
+    "STM32CubeIDE.elf": {
+      "bytes": 1438076,
+      "sha256": "8dc58b166dd27a8cdd5a0ba2944788676d5656cb97d94ecf71a6e78a560ed382"
+    },
+    "STM32CubeIDE.bin": {
+      "bytes": 124064,
+      "sha256": "281476ac42f86fd80669c0f2b504e51812f201a0e1f3a994bcaa76d5795bae3b"
+    },
+    "STM32CubeIDE.hex": {
+      "bytes": 349021,
+      "sha256": "8350947519db33476750e00f3855d864bd4db68a80eb42534a09871d1933584c"
+    },
+    "STM32CubeIDE.map": {
+      "bytes": 694922,
+      "sha256": "90851427af43a1866ef7820a13c162727d85cea6fbe35811afa47aeb5ad0e8d5"
+    }
+  },
+  "source_sha256": {
+    "firmware/Core/Inc/adcs_math.h": "5e82919f8944c99046e083ffc744512836eb90c335daf647cb2907edaa968bf7",
+    "firmware/Core/Inc/axis_frame.h": "110306e63c1df8f01c86685271b2a06c226998ae633113726d1705f546acbb2c",
+    "firmware/Core/Inc/calibration_store.h": "7aee54b474008ed9223049b6d26023ac66f6796ab4e19b8a4050f53bb427bd90",
+    "firmware/Core/Inc/command_parser.h": "e4a896488122a309b15fd61561fee03ff8f8eb8a9dd528e3db5c3d1f0a78178f",
+    "firmware/Core/Inc/dma.h": "d4c5792d793dbe887960a8f5e98de901717e239a6390fd091bde319b4dabd0f4",
+    "firmware/Core/Inc/heading_update.h": "cc543c625ba77b5a93ad8463ff9f96cfd6aec682b4eb42dd7527831483c5e3a0",
+    "firmware/Core/Inc/main.h": "7ddb53a56f8c3f1377047156ec5f2a5d041c4b027a977eeeb4999c1ea7d1c29c",
+    "firmware/Core/Inc/stm32f4xx_hal_conf.h": "37a647b3dd20252c77eeebb90d6d87998cdd63a7b4701cd52443eccbd5449396",
+    "firmware/Core/Inc/stm32f4xx_it.h": "63f4e69b814f79b31befbb5e38aa90f1401d2f9ca5d5c24b78ea6f4567bcac99",
+    "firmware/Core/Inc/telemetry_data.h": "620221b2252677a2bd4c16c7cdc474ff345e874008d40952196e9cdccaceadad",
+    "firmware/Core/Inc/telemetry_protocol.h": "8a7f2a2a063602cc8c37bc1ddef530c49adcd288e55bf22fe2131febeb6a3cd8",
+    "firmware/Core/Inc/telemetry_uart.h": "01a92c5a147d1dd82812ad90a8dc788e750ee6ebbd398384aacffa4777916b66",
+    "firmware/Core/Inc/usart.h": "0a7dc454f9bbdf814022de7d4147ea67f66300ad37cc6a957b94836fd47a0361",
+    "firmware/Core/Src/calibration_store.c": "bc6500456c6b252a348aef7327658dac1cea51ddba0feb198d065b5dc4b9e859",
+    "firmware/Core/Src/command_parser.c": "2bf0636a87883439809b833432eb7977eecaf3114e20ad03fb25640fe2570ab4",
+    "firmware/Core/Src/dma.c": "e6ecd5cce2f38c65326a65ac81ed13a68cb7742514063052b367279223c8c705",
+    "firmware/Core/Src/main.c": "cb1210990c85999769f5c6ed1f754fc0cc17df3a642f0b68f977ab081e4785ab",
+    "firmware/Core/Src/stm32f4xx_hal_msp.c": "7e6760aebb3ef5dc9b5624cc15c4c2869feabbb773c41cb47ad0d56592b57398",
+    "firmware/Core/Src/stm32f4xx_it.c": "13732e99bec9931c284f5d358308227147f9c0636c901c9071b668ca6201ba59",
+    "firmware/Core/Src/syscalls.c": "b993ebb4f882e8be21cec8d95983655a0caf4f0eb11348f20f6371f5a5031717",
+    "firmware/Core/Src/sysmem.c": "c41145817cc20abd8881c38851745d6e509e5f8c44a5179b125d108e51d1d432",
+    "firmware/Core/Src/system_stm32f4xx.c": "a31929eab936ac98db060c18917118acf79dc96e1f03ed4b57d614535dd06d70",
+    "firmware/Core/Src/telemetry_protocol.c": "99cd316bcf83b2c2f1c5f50430248c51f99dfc94114a92fdcab151513034d44e",
+    "firmware/Core/Src/telemetry_uart.c": "d00f5192cb6701a815548e27b407e6bfc528921d295add1107d6a743be70c88e",
+    "firmware/Core/Src/usart.c": "532a5de4b91bc241b82c1805f1d72f9cfc2bc395d44040843cffd67fb8986d7d",
+    "firmware/Core/Startup/startup_stm32f405rgtx.s": "c26c40ea8a4c27e4a7900e1d29bdfd6cdf6b46fbf4cbebad116a478803bbcb8e"
+  },
+  "limits": "Motor-off manual yaw test was slower than V8; a physically marked out/return test has not been confirmed. No claim of final closed-loop ADCS stability."
+}

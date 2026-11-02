@@ -25,23 +25,62 @@ static void test_pid(void){
 static void test_encoder(void){
   memset(wheel_encoder,0,sizeof(wheel_encoder));TIM_TypeDef timer={0};
   WheelEncoder_t *enc=&wheel_encoder[2];motor_command[2]=100;
-  WheelEncoder_UpdateOne(enc,&timer,1500);assert(enc->no_pulse_fault==1);
-  timer.CNT=25;WheelEncoder_UpdateOne(enc,&timer,1550);
-  assert(enc->no_pulse_fault==1 && enc->pulse_seen && enc->last_edge_tick_ms==1550);
+  WheelEncoder_UpdateOne(enc,&timer,1);assert(!enc->fault_flags);
+  WheelEncoder_UpdateOne(enc,&timer,1501);assert(!enc->fault_flags);
+  timer.CNT=25;WheelEncoder_UpdateOne(enc,&timer,1551);
+  assert(!enc->fault_flags && enc->pulse_seen && enc->last_edge_tick_ms==1551);
   assert(fabsf(enc->raw_rpm-1200)<.001f);
-  Motor_ApplySupervisedCommand(2,120);assert(motor_command[2]==0);
-  /* A pulse never self-clears a fault. Noise cannot bypass raw overspeed. */
-  enc->no_pulse_fault=0;enc->rpm=100;enc->raw_rpm=4900;enc->speed_valid=1;
+  Motor_ApplySupervisedCommand(2,120);assert(motor_command[2]==120);
+  enc->fault_flags=2;Motor_ApplySupervisedCommand(2,120);assert(motor_command[2]==0);
+  /* Implausible-rate faults and raw overspeed remain separate from missing pulses. */
+  enc->fault_flags=0;enc->rpm=100;enc->raw_rpm=4900;enc->speed_valid=1;
   Motor_ApplySupervisedCommand(2,120);assert(motor_command[2]==0&&enc->overspeed_limited);
   enc->raw_rpm=4700;Motor_ApplySupervisedCommand(2,120);assert(motor_command[2]==0);
   enc->raw_rpm=4500;Motor_ApplySupervisedCommand(2,120);assert(motor_command[2]==120);
-  timer.CNT+=100000;WheelEncoder_UpdateOne(enc,&timer,1600);
-  assert((enc->no_pulse_fault&2)&&!enc->speed_valid);
+  timer.CNT+=100000;WheelEncoder_UpdateOne(enc,&timer,1601);
+  assert((enc->fault_flags&2)&&!enc->speed_valid);
   memset(enc,0,sizeof(*enc));enc->counter_is_16_bit=1;enc->previous_count=65530;
   enc->count=INT32_MAX-2;timer.CNT=4;WheelEncoder_UpdateOne(enc,&timer,50);
   assert(enc->last_delta_count==10 && enc->count==INT32_MAX);
   assert(fabsf(enc->raw_rpm-480)<.001f);
   puts("PASS actual encoder PPR, timer wrap, fault latch, raw overspeed/hysteresis, noise, total saturation");
+}
+static void test_encoder_no_pulse_stop_disabled(void){
+  memset(wheel_encoder,0,sizeof(wheel_encoder));memset(pid_enabled,1,sizeof(pid_enabled));
+  for(unsigned axis=0;axis<3;axis++){
+    TIM_TypeDef timer={0};WheelEncoder_t *enc=&wheel_encoder[axis];enc->counter_is_16_bit=axis!=2;
+    for(unsigned sample=1;sample<=1200;sample++){
+      WheelEncoder_UpdateOne(enc,&timer,sample*50U);
+      int command=sample<=600?255:-255;
+      assert(enc->speed_valid && !enc->fault_flags && enc->rpm==0 && enc->count==0);
+      assert(Motor_ApplySupervisedCommand((MotorAxis_t)axis,command)==command);
+      assert(pid_enabled[axis]);
+    }
+  }
+  memset(motor_command,0,sizeof(motor_command));memset(pid_enabled,0,sizeof(pid_enabled));
+  puts("PASS actual all3axes:60seconds without pulses at PWM+/-255 does not fault, block PWM or change PID request");
+}
+static void test_encoder_recovery(void){
+  memset(wheel_encoder,0,sizeof(wheel_encoder));memset(pid_enabled,0,sizeof(pid_enabled));
+  memset(motor_command,0,sizeof(motor_command));TIM_TypeDef timer={0};
+  WheelEncoder_t *enc=&wheel_encoder[0];enc->fault_flags=2;enc->speed_valid=1;enc->pulse_seen=1;
+  assert(!WheelEncoder_CanClear(0)); /* Pulse evidence from before fault is insufficient. */
+  timer.CNT=24;WheelEncoder_UpdateOne(enc,&timer,100);assert(!WheelEncoder_CanClear(0));
+  timer.CNT=25;WheelEncoder_UpdateOne(enc,&timer,150);assert(WheelEncoder_CanClear(0));
+  WheelEncoder_UpdateOne(enc,&timer,50000);assert(WheelEncoder_CanClear(0)&&enc->fault_flags==2);
+  pid_enabled[0]=1;assert(!WheelEncoder_CanClear(0));pid_enabled[0]=0;
+  motor_command[0]=80;assert(!WheelEncoder_CanClear(0));motor_command[0]=0;
+  timer.CNT+=100000;WheelEncoder_UpdateOne(enc,&timer,50001);
+  assert(!WheelEncoder_CanClear(0)&&enc->recovery_pulses==0);
+  WheelEncoder_UpdateOne(enc,&timer,50051);assert(!WheelEncoder_CanClear(0));
+  /* Unsigned tick wrap with zero pulses remains valid zero RPM and never trips. */
+  memset(enc,0,sizeof(*enc));timer.CNT=0;motor_command[0]=100;
+  enc->previous_tick_ms=UINT32_MAX-100;
+  WheelEncoder_UpdateOne(enc,&timer,1398);assert(!enc->fault_flags);
+  WheelEncoder_UpdateOne(enc,&timer,1399);assert(!enc->fault_flags&&enc->speed_valid);
+  assert(Motor_ApplySupervisedCommand(0,100)==100);
+  memset(motor_command,0,sizeof(motor_command));
+  puts("PASS actual encoder explicit recovery:25 disarmed pulses, no auto-clear, no armed clear, tick wrap");
 }
 static void test_accel_covariance(void){
   float bias[3]={0},accel[3]={0,0,16384};AttitudeEKF_Init(bias,accel);
@@ -65,7 +104,7 @@ static void test_fusion(void){
   int16_t az=(int16_t)lroundf(accel_offset_raw[2]-16384/accel_scale[2]);
   for(int n=0;n<24000;n++){
     float rate=(n>=8000 && n<8400)?45:0;truth+=rate*.005f;
-    int16_t gz=(int16_t)lroundf(-(rate+.573f)*131);
+    int16_t gz=(int16_t)lroundf(-(rate+.573f)*GYRO_LSB_PER_DPS);
     tick=(uint32_t)(n+1)*5;
     AttitudeEKF_Update(ax,ay,az,0,0,gz,.005f);
     if(n%4==0){float mag[3]={.8f*cosf(truth*DEG_TO_RAD),-.8f*sinf(truth*DEG_TO_RAD),.6f};AttitudeEKF_MagnetometerUpdate(mag);}
@@ -192,4 +231,51 @@ static void test_measured_body_frame(void){
   assert(body[0]==YAW_AXIS_X&&body[1]==YAW_AXIS_Y&&body[2]==YAW_AXIS_Z);
   puts("PASS measured Roll/Pitch mounting, right-handed rotation, gyro/mag consistency, yaw-axis preservation and PID error on the correct body axis");
 }
-int main(void){test_geometry();test_pid();test_encoder();test_accel_covariance();test_fusion();test_compass_dropout();test_operator_authority();test_autonomous_hold();test_measured_body_frame();}
+static int16_t test_sensor_word(float value){return (int16_t)lroundf(fmaxf(-32768,fminf(32767,value)));}
+static void test_body_sample(float axg,float ayg,float azg,float yaw_rate){
+  /* Inverse of the verified current body basis: body=(sensorY,sensorX,-sensorZ). */
+  int16_t ax=test_sensor_word(accel_offset_raw[0]+ayg*ACCEL_LSB_PER_G/accel_scale[0]);
+  int16_t ay=test_sensor_word(accel_offset_raw[1]+axg*ACCEL_LSB_PER_G/accel_scale[1]);
+  int16_t az=test_sensor_word(accel_offset_raw[2]-azg*ACCEL_LSB_PER_G/accel_scale[2]);
+  tick+=5;AttitudeEKF_Update(ax,ay,az,0,0,test_sensor_word(-yaw_rate*GYRO_LSB_PER_DPS),.005f);
+}
+static void test_dynamic_attitude(void){
+  float bias[3]={0},accel[3]={0,0,ACCEL_LSB_PER_G};control_targets_initialized=0;tick=0;AttitudeEKF_Init(bias,accel);
+  for(unsigned n=0;n<240;n++)test_body_sample(0,0,1,n<40?400:(n<200?-100:0));
+  float fast_return=attitude_ekf.yaw_deg;
+  control_targets_initialized=0;tick=0;AttitudeEKF_Init(bias,accel);float max_tilt=0;
+  for(unsigned n=0;n<1600;n++){
+    float t=n*.005f;int moving=n>=200&&n<1000;
+    float x=moving?.06f*sinf(6.283185307f*2.5f*t):0;
+    float y=moving?.06f*cosf(6.283185307f*3.5f*t):0;
+    test_body_sample(x,y,sqrtf(1-x*x-y*y),n>=200&&n<600?30:(n>=600&&n<1000?-30:0));
+    if(moving)max_tilt=fmaxf(max_tilt,fmaxf(fabsf(attitude_ekf.roll_deg),fabsf(attitude_ekf.pitch_deg)));
+  }
+  control_targets_initialized=0;tick=0;AttitudeEKF_Init(bias,accel);
+  attitude_ekf.q[0]=cosf(17.5f*DEG_TO_RAD);attitude_ekf.q[1]=sinf(17.5f*DEG_TO_RAD);
+  for(unsigned n=0;n<600;n++)test_body_sample(0,0,1,0);
+  printf("DYNAMIC actual source: asymmetric400/-100dps return error=%.3fdeg, yaw-only vibration maxfalse tilt=%.3fdeg, stationary35deg recovery=%.3fdeg\n",fast_return,max_tilt,attitude_ekf.roll_deg);
+  assert(fabsf(fast_return)<1.0f && max_tilt<1.1f && fabsf(attitude_ekf.roll_deg)<1.0f);
+}
+static void test_fast_real_three_axis_motion(void){
+  float max_error=0;
+  for(unsigned axis=0;axis<3;axis++){
+    float bias[3]={0},gravity[3]={0,0,ACCEL_LSB_PER_G};control_targets_initialized=0;tick=0;AttitudeEKF_Init(bias,gravity);float angle=0;
+    for(unsigned n=0;n<220;n++){
+      float rate=n<40?350:(n<180?-100:0);angle+=rate*.005f;
+      float sn=sinf(angle*DEG_TO_RAD),cs=cosf(angle*DEG_TO_RAD);
+      float a[3]={axis==1?-sn:0,axis==0?sn:0,axis==2?1:cs};
+      int16_t ax=test_sensor_word(accel_offset_raw[0]+a[1]*ACCEL_LSB_PER_G/accel_scale[0]);
+      int16_t ay=test_sensor_word(accel_offset_raw[1]+a[0]*ACCEL_LSB_PER_G/accel_scale[1]);
+      int16_t az=test_sensor_word(accel_offset_raw[2]-a[2]*ACCEL_LSB_PER_G/accel_scale[2]);
+      tick+=5;AttitudeEKF_Update(ax,ay,az,axis==1?test_sensor_word(rate*GYRO_LSB_PER_DPS):0,axis==0?test_sensor_word(rate*GYRO_LSB_PER_DPS):0,axis==2?test_sensor_word(-rate*GYRO_LSB_PER_DPS):0,.005f);
+      float dot=attitude_ekf.q[0]*cosf(.5f*angle*DEG_TO_RAD)+attitude_ekf.q[axis+1]*sinf(.5f*angle*DEG_TO_RAD);
+      float error=2*acosf(fminf(1,fabsf(dot)))*RAD_TO_DEG;max_error=fmaxf(max_error,error);
+    }
+    assert(attitude_ekf.gyro_clipped_samples==0);
+  }
+  assert(max_error<.3f);
+  test_body_sample(0,0,1,1200);assert(attitude_ekf.gyro_clipped_samples==1);
+  printf("PASS actual fast350/-100dps70deg moves on all3axes retain real tilt: maxquaternion error%.3fdeg; clipping counter works\n",max_error);
+}
+int main(void){test_geometry();test_pid();test_encoder();test_encoder_no_pulse_stop_disabled();test_encoder_recovery();test_accel_covariance();test_fusion();test_compass_dropout();test_operator_authority();test_autonomous_hold();test_measured_body_frame();test_dynamic_attitude();test_fast_real_three_axis_motion();}

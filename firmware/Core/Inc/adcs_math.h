@@ -2,6 +2,20 @@
 #define ADCS_MATH_H
 #include <math.h>
 
+/* Exact constant-body-rate step, Hamilton body-to-world q <- q*dq.
+   The gyro drives rapid attitude changes; no Euler-angle interpolation. */
+static inline void ADCS_IntegrateBodyRate(float q[4],const float w[3],float dt)
+{
+  float rate=sqrtf(w[0]*w[0]+w[1]*w[1]+w[2]*w[2]);
+  float half=.5f*rate*dt,scale=rate>1.0e-6f?sinf(half)/rate:.5f*dt;
+  float d[4]={cosf(half),w[0]*scale,w[1]*scale,w[2]*scale};
+  float a=q[0],b=q[1],c=q[2],e=q[3];
+  q[0]=a*d[0]-b*d[1]-c*d[2]-e*d[3];
+  q[1]=a*d[1]+b*d[0]+c*d[3]-e*d[2];
+  q[2]=a*d[2]-b*d[3]+c*d[0]+e*d[1];
+  q[3]=a*d[3]+b*d[2]-c*d[1]+e*d[0];
+}
+
 /* Hamilton [w,x,y,z], active body-to-world, intrinsic ZYX Euler angles. */
 static inline int ADCS_AttitudeError(const float measured[4],const float target_deg[3],float body_deg[3])
 {

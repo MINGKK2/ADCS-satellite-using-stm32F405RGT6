@@ -1,0 +1,30 @@
+{
+  "firmware": "AXIS_FRAME_RP_DYN_V9",
+  "gyro_range": "1000",
+  "gyro_clip": "0",
+  "accel_clip": "0",
+  "acc_variance": "1602",
+  "no_pulse_stop": "0",
+  "calibration": [
+    "FLASH",
+    "7",
+    "0"
+  ],
+  "sensor_err": "0x00",
+  "mag_state": "TRACKING",
+  "mag_ratio": "987",
+  "gyro_median_dps": [
+    -0.034,
+    -0.061,
+    -0.002
+  ],
+  "angle_range_deg": {
+    "R": 0.09,
+    "P": 0.089,
+    "Y": 0.27
+  },
+  "fast_quaternion_norm": [
+    0.9999990103950104,
+    1.00000014071699
+  ]
+}

@@ -82,7 +82,7 @@ console.log('PASS: optional compass warning, valid IMU/PID retained, rejection r
 vm.runInContext('feedSerialText("SEQ=3 T_ms=500 R=0 P=0 Y=90000 PID=0,0,1 PID_ACTIVE=0,0,0 PID_BLOCK3=0,0,16 ATT_VALID=1\\r\\n")',ctx);
 assert(elements.get('pidYaw').checked);
 assert(elements.get('dbgYawSafety').textContent.includes('PID ON'));
-assert(elements.get('dbgYawSafety').textContent.includes('fault encoder'));
+assert(elements.get('dbgYawSafety').textContent.includes('chốt cảnh báo encoder'));
 vm.runInContext('feedSerialText("SEQ=4 T_ms=550 R=0 P=0 Y=90000 PID=0,0,1 PID_ACTIVE=0,0,1 PID_BLOCK3=0,0,0 ATT_VALID=1\\r\\n")',ctx);
 assert.equal(elements.get('dbgYawSafety').textContent,'PID ON · đang điều khiển');
 assert.equal(elements.get('yaw').textContent,'90.00°');
@@ -104,4 +104,68 @@ assert.equal(elements.get('dbgPitchRpm').textContent,'123.5');
 assert.equal(elements.get('dbgYawRpm').textContent,'678.9');
 assert.equal(elements.get('encoder').textContent,'— / 50 / 75');
 assert.equal(elements.get('encoderState').textContent,'Đã lắp: Pitch, Yaw');
-console.log('PASS confirmed hardware: Pitch PC6 and Yaw PA0 remain visible; only unfitted Roll RPM is suppressed');
+console.log('PASS legacy two-encoder configuration: fitted Pitch/Yaw visible and absent Roll suppressed');
+/* Reports consume accepted raw frames, never the UI's merged/cached targets. */
+vm.runInContext('globalThis.reportFrames=[];globalThis.attitudeReport={ingest:(line,type)=>reportFrames.push({line,type})};',ctx);
+vm.runInContext('feedSerialText("SEQ=7 T_ms=800 R=0 P=0 Y=1000 ATT_VALID=1 IMU_AGE_ms=4\\r\\nDIAG=1 T_ms=800 ENC_INSTALLED3=0,1,1\\r\\nSEQ=7 T_ms=800 R=0 P=0 Y=1000 ATT_VALID=1 IMU_AGE_ms=4\\r\\nACK CMD=STATUS BUSY=1\\r\\n")',ctx);
+assert.equal(vm.runInContext('reportFrames.length',ctx),2);
+assert.equal(vm.runInContext('reportFrames[0].type',ctx),'fast');
+assert(!vm.runInContext('reportFrames[0].line.includes("TARGET_mdeg")',ctx));
+assert.equal(vm.runInContext('reportFrames[1].type',ctx),'diag');
+console.log('PASS report hook: accepted raw FAST/metadata only; duplicate/ACK ignored, no cached target fabricated');
+vm.runInContext('feedSerialText("DIAG=1 T_ms=850 EC3=25,50,75 EF3=0,0,0 ENC_INSTALLED3=1,1,1\\r\\nSEQ=8 T_ms=900 R=0 P=0 Y=1000 ERPM3_m=1200000,2400000,3600000 PID=0,0,0 ATT_VALID=1 IMU_AGE_ms=4\\r\\n")',ctx);
+assert.equal(elements.get('dbgRollRpm').textContent,'1200.0');
+assert.equal(elements.get('dbgPitchRpm').textContent,'2400.0');
+assert.equal(elements.get('dbgYawRpm').textContent,'3600.0');
+assert.equal(elements.get('encoder').textContent,'25 / 50 / 75');
+assert.equal(elements.get('encoderState').textContent,'Đã lắp: Roll, Pitch, Yaw');
+console.log('PASS all three fitted encoders: Roll PA8/Pitch PC6/Yaw PA0 counts and distinct RPM visible');
+/* A fitted axis is not necessarily a faulted axis. EF3 is a bit mask, not motor diagnosis. */
+vm.runInContext('feedSerialText("DIAG=1 T_ms=950 EF3=1,1,0 ELIM3=0,0,0 ENC_INSTALLED3=1,1,1\\r\\nSEQ=9 T_ms=1000 R=0 P=0 Y=1000 PID=1,1,0 PID_BLOCK3=16,16,0 ATT_VALID=1 IMU_AGE_ms=4\\r\\n")',ctx);
+assert.equal(elements.get('encoderState').textContent,'Chốt cảnh báo encoder: Roll, Pitch');
+assert(!elements.get('encoderState').textContent.includes('Yaw'));
+assert(elements.get('encoderFaults').textContent.includes('Roll: không nhận xung'));
+assert(elements.get('encoderFaults').textContent.includes('Yaw: không chốt cảnh báo'));
+assert(elements.get('dbgRollSafety').textContent.includes('PWM ≥ 80 trong 1,5 s'));
+assert(elements.get('pidRoll').checked&&elements.get('pidPitch').checked&&!elements.get('pidYaw').checked);
+vm.runInContext('feedSerialText("DIAG=1 T_ms=1050 EF3=0,2,0 ELIM3=0,0,0 ENC_INSTALLED3=1,1,1\\r\\n")',ctx);
+assert.equal(elements.get('encoderState').textContent,'Chốt cảnh báo encoder: Pitch');
+assert(elements.get('dbgPitchSafety').textContent.includes('tần số xung ngoài dải'));
+vm.runInContext('feedSerialText("DIAG=1 T_ms=1100 EF3=1,0,1 ELIM3=0,0,0 ENC_INSTALLED3=0,1,0\\r\\n")',ctx);
+assert.equal(elements.get('encoderState').textContent,'Đã lắp: Pitch');
+console.log('PASS fault UI: only affected fitted axes, distinct timeout/noise reasons, no motor-failure inference and operator PID request preserved');
+/* Clearing is explicit, requires fresh disarmed telemetry and recovery evidence for each faulted axis. */
+vm.runInContext('port={writable:{}};globalThis.clearCommands=[];sendCommand=command=>clearCommands.push(command);',ctx);
+vm.runInContext('feedSerialText("DIAG=1 T_ms=1150 EF3=1,1,0 EV3=1,1,1 EREC3=24,25,0 ENC_INSTALLED3=1,1,1\\r\\nSEQ=10 T_ms=1200 R=0 P=0 Y=0 PID=0,0,0 PWM3=0,0,0 PID_BLOCK3=16,16,0 ATT_VALID=1 IMU_AGE_ms=4\\r\\n")',ctx);
+assert(elements.get('clearEncoder').disabled);
+elements.get('clearEncoder').click();assert.equal(vm.runInContext('clearCommands.length',ctx),0);
+vm.runInContext('feedSerialText("DIAG=1 T_ms=1250 EF3=1,1,0 EV3=1,1,1 EREC3=25,25,0 ENC_INSTALLED3=1,1,1\\r\\n")',ctx);
+assert(!elements.get('clearEncoder').disabled);
+assert.equal(vm.runInContext('clearCommands.length',ctx),0); /* Never sends automatically. */
+elements.get('clearEncoder').click();assert.equal(vm.runInContext('clearCommands[0]',ctx),'ENCODER_CLEAR');
+vm.runInContext('feedSerialText("SEQ=11 T_ms=1300 R=0 P=0 Y=0 PID=1,0,0 PWM3=0,0,0 PID_BLOCK3=16,16,0 ATT_VALID=1 IMU_AGE_ms=4\\r\\n")',ctx);
+assert(elements.get('clearEncoder').disabled);
+elements.get('clearEncoder').click();assert.equal(vm.runInContext('clearCommands.length',ctx),1);
+clock+=3000;vm.runInContext('updateFreshness()',ctx);assert(elements.get('clearEncoder').disabled);
+console.log('PASS explicit encoder clear:25 pulses per faulted axis, disarmed/fresh data required, no automatic commands or PID arm');
+vm.runInContext('feedSerialText("DIAG=1 T_ms=1350 EF3=0,0,0 EV3=1,1,1 EREC3=0,0,0 ENC_NO_PULSE_STOP=0 ENC_INSTALLED3=1,1,1\\r\\nSEQ=12 T_ms=1400 R=0 P=0 Y=0 ERPM3_m=0,0,0 PID=1,1,1 PWM3=120,130,140 PID_BLOCK3=0,0,0 ATT_VALID=1 IMU_AGE_ms=4\\r\\n")',ctx);
+assert(elements.get('encoderNoPulseStop').textContent.includes('ĐÃ TẮT'));
+assert.equal(elements.get('dbgRollSafety').textContent,'PID ON · đang điều khiển');
+assert.equal(elements.get('pwm').textContent,'120 / 130 / 140');
+assert(elements.get('clearEncoder').disabled);
+assert.equal(vm.runInContext('clearCommands.length',ctx),1);
+clock+=3000;vm.runInContext('updateFreshness()',ctx);
+assert.equal(elements.get('encoderNoPulseStop').textContent,'Chờ dữ liệu mới');
+console.log('PASS no-pulse stop policy is explicitly reported disabled; zero RPM is not displayed as motor shutdown; stale policy marked');
+vm.runInContext('feedSerialText("SEQ=13 T_ms=1450 R=90000 P=0 Y=0 Q_u6=707107,707107,0,0 PID=0,0,0 PWM3=0,0,0 ATT_VALID=1 IMU_AGE_ms=4\\r\\n")',ctx);
+assert.equal(vm.runInContext('cubesatAttitude.quaternion.length',ctx),4);
+assert(Math.abs(vm.runInContext('cubesatAttitude.quaternion[1]',ctx)-.707107)<1e-9);
+vm.runInContext('feedSerialText("SLOW=1 T_ms=1460 Q_u6=707107,0,0,707107\\r\\n")',ctx);
+assert.equal(vm.runInContext('cubesatAttitude.quaternion[3]',ctx),0); /* Slow q cannot replace the fast pose. */
+vm.runInContext('feedSerialText("SEQ=14 T_ms=1500 R=0 P=0 Y=0 Q_u6=0,0,0,0 ATT_VALID=1 IMU_AGE_ms=4\\r\\n")',ctx);
+assert.equal(vm.runInContext('cubesatAttitude.valid',ctx),false);
+vm.runInContext('feedSerialText("SEQ=15 T_ms=1550 R=0 P=0 Y=0 ATT_VALID=1 IMU_AGE_ms=4\\r\\nDIAG=1 T_ms=1550 GYRO_FS_dps=1000 GYRO_CLIP=2 ACC_CLIP=1\\r\\n")',ctx);
+assert.equal(vm.runInContext('cubesatAttitude.valid',ctx),true);
+assert.equal(vm.runInContext('cubesatAttitude.quaternion',ctx),undefined); /* Legacy fast pose never borrows a cached q. */
+assert(elements.get('imuMotionQuality').textContent.includes('2/1'));
+console.log('PASS fast measured quaternion only, slow cache isolation, corrupt quaternion rejection, legacy Euler fallback and clipping diagnostics');

@@ -1,0 +1,42 @@
+{
+  "frames": 1384,
+  "duration_s": 72.478,
+  "full_angle_range_deg": {
+    "R": 0.844,
+    "P": 1.263,
+    "Y": 56.961
+  },
+  "gyro_peak_dps": [
+    2.16,
+    4.421,
+    44.455
+  ],
+  "return_difference_deg": {
+    "R": 0.07149999999998613,
+    "P": -0.6939999999999884,
+    "Y": -54.18100000000001
+  },
+  "quiet_tail_angle_range_deg": {
+    "R": 0.06,
+    "P": 0.058,
+    "Y": 0.126
+  },
+  "control_dt_us_range": [
+    5000,
+    7000
+  ],
+  "mag_ratio_range": [
+    0.969,
+    1.008
+  ],
+  "mag_states": [
+    "TRACKING"
+  ],
+  "clip_counts": [
+    "0",
+    "0"
+  ],
+  "all_valid": true,
+  "pid_and_pwm_off": true,
+  "limitations": "Motor-off manual yaw test was slower than V8; a physically marked out/return test has not been confirmed. No claim of final closed-loop ADCS stability."
+}

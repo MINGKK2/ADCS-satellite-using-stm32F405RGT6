@@ -86,3 +86,11 @@ C3 from a USB charger/powerbank; retain common GND and both UART wires.
 After STM32 V4 was flashed, COM23 again returned only S3 local counters and no
 STM32 STATUS ACK during the 12-second check. Therefore this publication does not
 claim that the current end-to-end link or ADCS response has passed a final test.
+
+## Latest STM32 V9 runtime check
+
+The older V4 link-check failure above is historical. The V9 post-flash check on
+2026-11-02 received 230 FAST records in 12 seconds (~19.14 Hz), two STM32 STATUS
+ACKs, no FAST sequence gaps, valid IMU and saved calibration. Radio source was
+unchanged. This verifies communication, not independent C3 power robustness or
+closed-loop ADCS performance.

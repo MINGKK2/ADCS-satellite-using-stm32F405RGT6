@@ -26,9 +26,10 @@ Invoke-Checked $Compiler ($cflags+@('-DCALIBRATION_STORE_HOST_TEST',"-I$tests\fl
 Invoke-Checked $output @()
 Invoke-Checked $Python @((Join-Path $tests 'test-adcs-source.py'),$ProjectRoot)
 Invoke-Checked $Node @((Join-Path $viewer 'test-dashboard.cjs'))
+Invoke-Checked $Node @((Join-Path $viewer 'test-attitude-report.cjs'))
 Invoke-Checked $Node @((Join-Path $viewer 'test-attitude-model.mjs'))
 $elf=Join-Path $ProjectRoot 'Debug\STM32CubeIDE.elf'
-if(!(Test-Path -LiteralPath $elf)){$elf=Join-Path $repoRoot 'artifacts\stm32-v4\STM32CubeIDE.elf'}
+if(!(Test-Path -LiteralPath $elf)){$elf=Join-Path $repoRoot 'artifacts\stm32-v9\STM32CubeIDE.elf'}
 if(!(Test-Path -LiteralPath $elf)){$elf=Join-Path $repoRoot 'artifacts\manual-pid\STM32CubeIDE.elf'}
 if(!(Test-Path -LiteralPath $elf)){$elf=Join-Path $repoRoot 'artifacts\stable-debug\STM32CubeIDE.elf'}
 Invoke-Checked $Python @((Join-Path $PSScriptRoot 'check-calibration-elf.py'),$elf)

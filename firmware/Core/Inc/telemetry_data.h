@@ -5,6 +5,8 @@ typedef struct {
   uint32_t uptime_ms,sequence,mag_age_ms,mag_rejected,mag_accepted,accel_accepted,accel_rejected;
   uint32_t pressure_pa,humidity_milli,dt_us,control_dt_us,control_late,sensor_error;
   uint32_t imu_age_ms,encoder_age[3];
+  uint32_t encoder_recovery[3];
+  uint32_t gyro_clip_count,accel_clip_count,accel_noise_u6;
   uint32_t env_age_ms[3];
   uint32_t mag_sample_age_ms,mag_io_errors,calibration_measured;
   uint8_t mag_state,mag_reason,calibration_source,calibration_save_result;

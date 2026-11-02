@@ -64,7 +64,7 @@ names=['ControlTiming_Accept','ClampFloat','WrapAngle180','SensorToBodyAccel','S
        'AttitudeEKF_PropagateCovariance','AttitudeEKF_AccelerometerUpdate',
        'RotateWorldToBody','RotateBodyToWorld','GY511_MagToBody','AttitudeEKF_ObserveInitialMagReference',
        'AttitudeEKF_MagnetometerUpdate','AttitudeEKF_RefreshEuler','Magnetometer_ProcessSample','AttitudeEKF_Update',
-       'AttitudeControl_Reset','AttitudeControl_HoldCurrentYaw','AxisControl_Update','WheelEncoder_UpdateOne','Motor_ApplySupervisedCommand','GY511_MagCalibrate']
+       'AttitudeControl_Reset','AttitudeControl_HoldCurrentYaw','AxisControl_Update','WheelEncoder_UpdateOne','WheelEncoder_CanClear','Motor_ApplySupervisedCommand','GY511_MagCalibrate']
 program=prefix+defines+'\n'+''.join(structure(n)+'\n' for n in ['AttitudeEkf_t','AxisControl_t','WheelEncoder_t','Magnetometer_t','WheelSpeedControl_t'])+globals+'\n'.join(function(n) for n in names)
 program+='\n'+(here/'test-adcs-cases.c').read_text()
 generated=here/'adcs-source-generated.c';generated.write_text(program)

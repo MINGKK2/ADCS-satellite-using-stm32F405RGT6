@@ -1,0 +1,11 @@
+{
+  "checked_local_date": "2026-11-02",
+  "current_source_matches_built_v9_snapshot": true,
+  "current_elf_bin_hex_match_verified_deployment": true,
+  "repository_host_regression": "ALL_STABLE_TESTS_OK",
+  "radio_packet_fragment_regression": "PASS",
+  "elf_calibration_sector_reservation": "PASS",
+  "staged_whitespace_check": "PASS",
+  "hardware_motor_test_during_publication": false,
+  "raw_flash_calibration_backup_published": false
+}

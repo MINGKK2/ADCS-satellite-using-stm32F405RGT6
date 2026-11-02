@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from './vendor/three/OrbitControls.js';
-import { attitudeQuaternion } from './attitude-model-math.js';
+import { poseQuaternion } from './attitude-model-math.js';
 
 const mount=document.getElementById('scene');
 const status=document.getElementById('modelStatus');
@@ -70,7 +70,7 @@ try {
   });
   globalThis.cubesatModel={
     setAttitude(state){
-      const q=attitudeQuaternion(state.roll,state.pitch,state.yaw);
+      const q=poseQuaternion(state);
       if(q&&(state.valid||!received)){targetQuaternion.set(...q);if(!received)attitudeRoot.quaternion.copy(targetQuaternion);received=true;}
       valid=!!(state.valid&&q);
       showState();
@@ -112,9 +112,10 @@ try {
   let last=0;
   function animate(time){
     requestAnimationFrame(animate);
-    if(time-last<1000/30||document.hidden)return;
-    const dt=last?Math.min(.1,(time-last)/1000):1/30;last=time;
-    attitudeRoot.quaternion.slerp(targetQuaternion,1-Math.exp(-18*dt));
+    if(time-last<1000/60||document.hidden)return;
+    last=time;
+    // Display the newest measured pose without a second attitude low-pass.
+    attitudeRoot.quaternion.copy(targetQuaternion);
     controls.update();renderer.render(scene,camera);
   }
   requestAnimationFrame(animate);

@@ -8,6 +8,8 @@ static size_t bytes,maxlen[3];static unsigned frames[3],bad;
 int TelemetryUART_Send(const void *p,size_t n,int priority,unsigned stream) {
   if(!p||!n||n>1024){bad++;return 0;}
   const char *s=p;assert(s[n-2]=='\r'&&s[n-1]=='\n');
+  if(!priority&&stream==2){assert(strstr(s," EREC3=25,24,0 ENC_NO_PULSE_STOP=0 "));assert(strstr(s,"GYRO_FS_dps=1000"));}
+  if(!priority&&stream==0)assert(strstr(s," Q_u6="));
   if(!priority){bytes+=n;frames[stream]++;if(n>maxlen[stream])maxlen[stream]=n;}
   return 1;
 }
@@ -21,6 +23,9 @@ int main(void) {
     d.p_term[i]=d.i_term[i]=d.d_term[i]=-2147483647;d.rpm_limit[i]=30000000;
     d.wheel_kp[i]=d.wheel_ki[i]=d.wheel_kd[i]=1000000000;}
   d.yaw_rate=-250000;d.mag_age_ms=4294967295U;d.control_late=4294967295U;
+  d.encoder_recovery[0]=25;d.encoder_recovery[1]=24;d.encoder_recovery[2]=0;
+  for(unsigned i=0;i<4;i++)d.quaternion[i]=-1000000;
+  d.gyro_clip_count=d.accel_clip_count=4294967295U;d.accel_noise_u6=1000000U;
   d.pressure_pa=110000;d.altitude_mm=-1000000;d.voltage_mv=12600;d.current_ma10=-32000;
   TelemetryProtocol_Init();
   for(unsigned t=10;t<=10000;t+=10){d.uptime_ms=t;TelemetryProtocol_Service(&d);}
