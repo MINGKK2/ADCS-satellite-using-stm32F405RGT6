@@ -24,7 +24,7 @@ chiều quay độc lập. Gain hiện tại chưa được xác nhận là bộ
 | Trục | PWM | IN1 | IN2 | Encoder | Dấu điều khiển motor |
 |---|---|---|---|---|---|
 | Roll | PA6 / TIM3_CH1 | PC4 | PC5 | PA8, đã lắp | +1 |
-| Pitch | PA7 / TIM3_CH2 | PB12 | PB13 | PC6, đã lắp | **+1**, trước đây −1 |
+| Pitch | PA7 / TIM3_CH2 | PB12 | PB13 | PC6, đã lắp | +1 |
 | Yaw | PB0 / TIM3_CH3 | PB1 | PB8 | PA0, đã lắp | −1 |
 
 Encoder cấu hình 25 xung/vòng; chu kỳ tư thế/PID đặt 5 ms, đo encoder 50 ms.
