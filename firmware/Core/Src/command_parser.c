@@ -183,83 +183,10 @@ static UsbCommand_t classify(const char *command,ParsedCommand *out) {
     if ((strcmp(command, "MODE,CHARGING") == 0)
         || (strcmp(command, "SET_MODE,CHARGING") == 0)
         || (strcmp(command, "MODE CHARGING") == 0)) return USB_COMMAND_MODE_CHARGING;
-    if ((strcmp(command, "CAMERA,CAPTURE") == 0)
-        || (strcmp(command, "CAMERA_CAPTURE") == 0)
-        || (strcmp(command, "CAMERA CAPTURE") == 0)
-        || (strcmp(command, "CAPTURE") == 0)) return USB_COMMAND_CAMERA_CAPTURE;
     if ((strcmp(command, "EMERGENCY_STOP") == 0)
         || (strcmp(command, "ESTOP") == 0)) return USB_COMMAND_ESTOP;
     if ((strcmp(command, "EMERGENCY_STOP_CLEAR") == 0)
         || (strcmp(command, "ESTOP_CLEAR") == 0)) return USB_COMMAND_ESTOP_CLEAR;
-    if ((strcmp(command, "CTRL_MODE,ATTITUDE") == 0)
-        || (strcmp(command, "CONTROL_MODE,ATTITUDE") == 0))
-    {
-      return USB_COMMAND_CONTROL_ATTITUDE;
-    }
-    if ((strcmp(command, "CTRL_MODE,WHEEL_SPEED") == 0)
-        || (strcmp(command, "CONTROL_MODE,WHEEL_SPEED") == 0))
-    {
-      return USB_COMMAND_CONTROL_WHEEL_SPEED;
-    }
-    if (strncmp(command, "SET_WHEEL_RPM,", 14U) == 0)
-    {
-      float parsed_rpm[3];
-      if ((ParseThreeFloats(&command[14], parsed_rpm) != 0U)
-          && (fabsf(parsed_rpm[0]) <= 30000.0f)
-          && (fabsf(parsed_rpm[1]) <= 30000.0f)
-          && (fabsf(parsed_rpm[2]) <= 30000.0f))
-      {
-        memcpy(out->values, parsed_rpm, sizeof(parsed_rpm));
-        return USB_COMMAND_SET_WHEEL_RPM;
-      }
-    }
-    if (strncmp(command, "RPM_LIMIT,", 10U) == 0)
-    {
-      float parsed_limit[3];
-      if ((ParseThreeFloats(&command[10], parsed_limit) != 0U)
-          && (parsed_limit[0] >= 0.0f)
-          && (parsed_limit[1] >= 0.0f)
-          && (parsed_limit[2] >= 0.0f)
-          && (parsed_limit[0] <= 30000.0f)
-          && (parsed_limit[1] <= 30000.0f)
-          && (parsed_limit[2] <= 30000.0f))
-      {
-        memcpy(out->values, parsed_limit, sizeof(parsed_limit));
-        return USB_COMMAND_SET_RPM_LIMIT;
-      }
-    }
-    if (strncmp(command, "WHEEL_PID,", 10U) == 0)
-    {
-      const char *gain_text = NULL;
-      if (strncmp(&command[10], "ROLL,", 5U) == 0)
-      {
-        out->axis = 0;
-        gain_text = &command[15];
-      }
-      else if (strncmp(&command[10], "PITCH,", 6U) == 0)
-      {
-        out->axis = 1;
-        gain_text = &command[16];
-      }
-      else if (strncmp(&command[10], "YAW,", 4U) == 0)
-      {
-        out->axis = 2;
-        gain_text = &command[14];
-      }
-      if ((gain_text != NULL)
-          && (ParseThreeFloats(gain_text, out->values) != 0U)
-          && (out->values[0] >= 0.0f)
-          && (out->values[1] >= 0.0f)
-          && (out->values[2] >= 0.0f)
-          && out->values[0]<=1000.0f && out->values[1]<=1000.0f && out->values[2]<=1000.0f)
-      {
-        return USB_COMMAND_SET_WHEEL_PID;
-      }
-    }
-    if (strcmp(command, "ENCODER_CLEAR") == 0)
-    {
-      return USB_COMMAND_ENCODER_CLEAR;
-    }
     if (command[0] != '\0') return USB_COMMAND_UNKNOWN;
 
   return USB_COMMAND_UNKNOWN;

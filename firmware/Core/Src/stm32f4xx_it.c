@@ -225,4 +225,10 @@ void DMA2_Stream7_IRQHandler(void){HAL_DMA_IRQHandler(&hdma_usart1_tx);}
 void USART1_IRQHandler(void){HAL_UART_IRQHandler(&huart1);}
 
 /* USER CODE BEGIN 1 */
+#include "gps_uart.h"
+
+void USART2_IRQHandler(void)
+{
+  GpsUart_ReceiveIRQ();
+}
 /* USER CODE END 1 */

@@ -1,6 +1,7 @@
 #ifndef TELEMETRY_PROTOCOL_H
 #define TELEMETRY_PROTOCOL_H
 #include "telemetry_data.h"
+#define TELEMETRY_FIRMWARE_ID "AXIS_FRAME_RP_UART_V13"
 #include <stddef.h>
 #include <stdint.h>
 void TelemetryProtocol_Init(void);

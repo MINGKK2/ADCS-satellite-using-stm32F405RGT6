@@ -1,6 +1,7 @@
-/* CubeMX-compatible USART1 peripheral module. No telemetry logic here. */
+/* USART1 ground link and USART2 GPS pin/baud configuration. */
 #include "usart.h"
 UART_HandleTypeDef huart1;
+UART_HandleTypeDef huart2;
 DMA_HandleTypeDef hdma_usart1_rx,hdma_usart1_tx;
 void MX_USART1_UART_Init(void) {
   huart1.Instance=USART1;
@@ -13,7 +14,32 @@ void MX_USART1_UART_Init(void) {
   huart1.Init.OverSampling=UART_OVERSAMPLING_16;
   if(HAL_UART_Init(&huart1)!=HAL_OK)Error_Handler();
 }
+void MX_USART2_UART_Init(void)
+{
+  huart2.Instance = USART2;
+  huart2.Init.BaudRate = 115200;
+  huart2.Init.WordLength = UART_WORDLENGTH_8B;
+  huart2.Init.StopBits = UART_STOPBITS_1;
+  huart2.Init.Parity = UART_PARITY_NONE;
+  huart2.Init.Mode = UART_MODE_TX_RX;
+  huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart2.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart2) != HAL_OK) Error_Handler();
+}
+
 void HAL_UART_MspInit(UART_HandleTypeDef *u) {
+  if (u->Instance == USART2) {
+    GPIO_InitTypeDef pins = {0};
+    __HAL_RCC_USART2_CLK_ENABLE();
+    __HAL_RCC_GPIOA_CLK_ENABLE();
+    pins.Pin = GPIO_PIN_2 | GPIO_PIN_3;
+    pins.Mode = GPIO_MODE_AF_PP;
+    pins.Pull = GPIO_PULLUP;
+    pins.Speed = GPIO_SPEED_FREQ_HIGH;
+    pins.Alternate = GPIO_AF7_USART2;
+    HAL_GPIO_Init(GPIOA, &pins);
+    return;
+  }
   if(u->Instance!=USART1)return;
   GPIO_InitTypeDef gpio={0};
   __HAL_RCC_USART1_CLK_ENABLE();__HAL_RCC_GPIOA_CLK_ENABLE();
@@ -39,6 +65,12 @@ void HAL_UART_MspInit(UART_HandleTypeDef *u) {
   HAL_NVIC_SetPriority(USART1_IRQn,6,0);HAL_NVIC_EnableIRQ(USART1_IRQn);
 }
 void HAL_UART_MspDeInit(UART_HandleTypeDef *u) {
+  if (u->Instance == USART2) {
+    HAL_NVIC_DisableIRQ(USART2_IRQn);
+    __HAL_RCC_USART2_CLK_DISABLE();
+    HAL_GPIO_DeInit(GPIOA, GPIO_PIN_2 | GPIO_PIN_3);
+    return;
+  }
   if(u->Instance!=USART1)return;
   __HAL_RCC_USART1_CLK_DISABLE();HAL_GPIO_DeInit(GPIOA,GPIO_PIN_9|GPIO_PIN_10);
   HAL_DMA_DeInit(u->hdmarx);HAL_DMA_DeInit(u->hdmatx);HAL_NVIC_DisableIRQ(USART1_IRQn);

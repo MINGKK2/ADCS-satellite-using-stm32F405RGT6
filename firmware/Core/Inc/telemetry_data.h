@@ -15,9 +15,13 @@ typedef struct {
   int32_t angle[3],target[3],error[3],gyro[3],accel[3],mag[3],quaternion[4],yaw_rate;
   int32_t pid_output[3],requested_pwm[3],pwm[3],rpm_milli[3],count[3],encoder_angle[3];
   int32_t p_term[3],i_term[3],d_term[3],rpm_signed[3],rpm_target[3],rpm_error[3],rpm_limit[3];
+  int32_t attitude_rp_gains_milli[3],attitude_yaw_gains_milli[3];
   int32_t wheel_kp[3],wheel_ki[3],wheel_kd[3];
   uint32_t encoder_rejected[3];
   int32_t bmp_centi_c,altitude_mm,voltage_mv,current_ma10,power_mw,battery_percent,aht_milli_c;
+  /* Coordinates are degrees * 1e7; INT32_MAX denotes unavailable data. */
+  int32_t gps_lat_e7,gps_lon_e7;
+  uint8_t gps_fix;
   uint8_t who,sv,pid[3],estop,charging,stationary,mag_quality,attitude_valid,fusion;
   uint8_t encoder_valid[3],encoder_fault[3],encoder_limit[3],wheel_ready[3],speed_mode;
 } TelemetryData;
