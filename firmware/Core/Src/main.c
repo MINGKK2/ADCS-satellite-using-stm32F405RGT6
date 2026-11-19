@@ -36,6 +36,8 @@
 #include "dma.h"
 #include "calibration_store.h"
 #include "axis_frame.h"
+#include "gps_receiver.h"
+#include "gps_uart.h"
 /* USER CODE END Includes */
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
@@ -156,8 +158,8 @@ static void Calibration_Save(uint32_t measured_flags);
 #define PITCH_KI               5.0f
 #define PITCH_KD               8.0f
 #define PITCH_INTEGRAL_LIMIT   80.0f
-#define YAW_KP                (28.0f / 2.4f)
-#define YAW_KI                5.0f
+#define YAW_KP                9.0f
+#define YAW_KI                3.5f
 #define YAW_KD                8.0f
 #define YAW_INTEGRAL_LIMIT     80.0f
 
@@ -426,9 +428,6 @@ static int32_t motor_command[MOTOR_AXIS_COUNT] = {0, 0, 0};
 static int32_t requested_motor_command[MOTOR_AXIS_COUNT] = {0, 0, 0};
 static float wheel_rpm_limit[MOTOR_AXIS_COUNT] = {4800.0f, 4800.0f, 4800.0f};
 static float pending_setpoint_deg[MOTOR_AXIS_COUNT] = {0.0f, 0.0f, 0.0f};
-static float pending_wheel_rpm[MOTOR_AXIS_COUNT] = {0.0f, 0.0f, 0.0f};
-static float pending_wheel_pid_gain[3] = {0.0f, 0.0f, 0.0f};
-static float pending_rpm_limit[MOTOR_AXIS_COUNT] = {0.0f, 0.0f, 0.0f};
 /* Explicit arm after boot; loss of the ground station never disarms PID. */
 /* Operator request latch. Only PID commands/explicit ESTOP may change it. */
 static uint8_t pid_enabled[MOTOR_AXIS_COUNT] = {0U, 0U, 0U};
@@ -436,7 +435,6 @@ static uint8_t control_targets_initialized=0U;
 static uint32_t control_pause_until_ms=0U;
 static uint8_t control_timing_paused=0U;
 static uint8_t pending_pid_axis = MOTOR_AXIS_COUNT;
-static uint8_t pending_wheel_axis = MOTOR_AXIS_COUNT;
 static uint8_t pending_pid_enable = 0U;
 static volatile uint8_t emergency_stop = 0U;
 static uint8_t motor_initialized=0U;
@@ -903,17 +901,6 @@ static void WheelEncoder_UpdateOne(
        inhibit PWM. Keep RPM/count diagnostics; invalid-rate and overspeed
        checks are separate and unchanged. */
   }
-}
-
-static uint8_t WheelEncoder_CanClear(MotorAxis_t axis)
-{
-  const WheelEncoder_t *encoder=&wheel_encoder[axis];
-  if(pid_enabled[axis] || motor_command[axis])return 0U;
-  /* Each faulted wheel must produce one plausible revolution while disarmed.
-     Keep that evidence until explicit clear, allowing sequential hand checks
-     instead of requiring all three wheels to pulse within the same1second. */
-  return !encoder->fault_flags ||
-      (encoder->speed_valid && encoder->recovery_pulses>=ENCODER_CLEAR_VERIFY_PULSES);
 }
 
 static void WheelEncoders_Update(uint32_t now_ms)
@@ -2175,9 +2162,6 @@ static UsbCommand_t UsbCommand_Poll(void)
   snprintf(last_received_command,sizeof(last_received_command),"%s",command.text);
   switch(command.type) {
     case USB_COMMAND_SET_ATTITUDE:memcpy(pending_setpoint_deg,command.values,sizeof(command.values));break;
-    case USB_COMMAND_SET_WHEEL_RPM:memcpy(pending_wheel_rpm,command.values,sizeof(command.values));break;
-    case USB_COMMAND_SET_RPM_LIMIT:memcpy(pending_rpm_limit,command.values,sizeof(command.values));break;
-    case USB_COMMAND_SET_WHEEL_PID:pending_wheel_axis=command.axis;memcpy(pending_wheel_pid_gain,command.values,sizeof(command.values));break;
     case USB_COMMAND_PID:pending_pid_axis=command.axis;pending_pid_enable=command.enabled;break;
     default:break;
   }
@@ -3432,6 +3416,8 @@ int main(void)
   MX_USART1_UART_Init();
   CommandParser_Init();TelemetryProtocol_Init();
   (void)TelemetryUART_Init();
+  MX_USART2_UART_Init();
+  GpsUart_Start();
   App_Wait(100);
   I2C1_BusRecover();
   mpu_status = MPU6050_Init(&mpu_who_am_i);
@@ -3524,43 +3510,21 @@ int main(void)
 	          sizeof(message),
 	          "NACK CMD=UNKNOWN RX=%s VALID=CAL_GYRO,CAL_MAG,CAL_ACCEL_START,"
 	          "CAL_ACCEL_CAPTURE,CAL_ACCEL_CANCEL,ZERO_YAW,STATUS,SET_ATTITUDE,"
-	          "PID,MODE,CAMERA_CAPTURE,ESTOP,CTRL_MODE,SET_WHEEL_RPM,"
-	          "WHEEL_PID,RPM_LIMIT,ENCODER_CLEAR\r\n",
+	          "PID,MODE,ESTOP,ESTOP_CLEAR\r\n",
 	          last_received_command);
 	      TelemetryProtocol_Event((uint8_t *)message, length);
 	    }
 	    else if (usb_command == USB_COMMAND_STATUS)
 	    {
-	      int length = snprintf(
-	          message,
-	          sizeof(message),
-	          "ACK CMD=STATUS ACCEL_ACTIVE=%u ACCEL_CAPTURED=%u/6 "
-	          "MAG_CAL=%u FUSION=%u BMP=%u INA=%u AHT=%u MODE=%s "
-	          "CTRL=%s PID=%u,%u,%u ESTOP=%u EF=%u,%u,%u "
-	          "ELIM=%u,%u,%u WREADY=%u,%u,%u\r\n",
-	          accel_calibration.active,
-	          accel_calibration.count,
-	          magnetometer.calibrated,
-	          (unsigned int)fusion_status,
-	          (unsigned int)bmp280_status,
-	          (unsigned int)ina219_status,
-	          (unsigned int)aht30_status,
-	          (system_mode == SYSTEM_MODE_CHARGING) ? "CHARGING" : "WORKING",
-	          (control_mode == CONTROL_MODE_ATTITUDE)
-	              ? "ATTITUDE" : "WHEEL_SPEED_TEST",
-	          pid_enabled[MOTOR_AXIS_ROLL],
-	          pid_enabled[MOTOR_AXIS_PITCH],
-	          pid_enabled[MOTOR_AXIS_YAW],
-	          emergency_stop,
-	          wheel_encoder[MOTOR_AXIS_ROLL].fault_flags,
-	          wheel_encoder[MOTOR_AXIS_PITCH].fault_flags,
-	          wheel_encoder[MOTOR_AXIS_YAW].fault_flags,
-	          wheel_encoder[MOTOR_AXIS_ROLL].overspeed_limited,
-	          wheel_encoder[MOTOR_AXIS_PITCH].overspeed_limited,
-	          wheel_encoder[MOTOR_AXIS_YAW].overspeed_limited,
-	          wheel_speed_control[MOTOR_AXIS_ROLL].gains_configured,
-	          wheel_speed_control[MOTOR_AXIS_PITCH].gains_configured,
-	          wheel_speed_control[MOTOR_AXIS_YAW].gains_configured);
+	      int length = snprintf(message, sizeof(message),
+	          "ACK CMD=STATUS FW=" TELEMETRY_FIRMWARE_ID
+	          " PID=%u,%u,%u ESTOP=%u MODE=%s ACCEL_ACTIVE=%u ACCEL_CAPTURED=%u/6"
+	          " MAG_CAL=%u CAL_SOURCE=%s CAL_MEASURED=%lu CAL_SAVE=%u\r\n",
+	          pid_enabled[0],pid_enabled[1],pid_enabled[2],emergency_stop,
+	          system_mode==SYSTEM_MODE_CHARGING?"CHARGING":"WORKING",
+	          accel_calibration.active,accel_calibration.count,magnetometer.calibrated,
+	          calibration_from_flash?"FLASH":"DEFAULTS",
+	          (unsigned long)calibration_measured_flags,(unsigned int)calibration_save_result);
 	      TelemetryProtocol_Event((uint8_t *)message, length);
 	    }
 	    else if (usb_command == USB_COMMAND_SET_ATTITUDE)
@@ -3630,12 +3594,6 @@ int main(void)
 	          (system_mode == SYSTEM_MODE_CHARGING) ? "CHARGING" : "WORKING");
 	      TelemetryProtocol_Event((uint8_t *)message, length);
 	    }
-	    else if (usb_command == USB_COMMAND_CAMERA_CAPTURE)
-	    {
-	      static uint8_t camera_message[] =
-	          "NACK CMD=CAMERA_CAPTURE REASON=CAMERA_NOT_CONFIGURED\r\n";
-	      TelemetryProtocol_Event(camera_message, sizeof(camera_message) - 1U);
-	    }
 	    else if (usb_command == USB_COMMAND_ESTOP)
 	    {
 	      emergency_stop = 1U;
@@ -3657,111 +3615,6 @@ int main(void)
 	      static uint8_t clear_message[] =
 	          "ACK CMD=EMERGENCY_STOP_CLEAR ACTIVE=0 PID=0,0,0\r\n";
 	      TelemetryProtocol_Event(clear_message, sizeof(clear_message) - 1U);
-	    }
-	    else if (usb_command == USB_COMMAND_CONTROL_ATTITUDE)
-	    {
-	      control_mode = CONTROL_MODE_ATTITUDE;
-	      for (uint32_t axis = 0U; axis < MOTOR_AXIS_COUNT; axis++)
-	      {
-	        wheel_speed_control[axis].integral = 0.0f;
-	        wheel_speed_control[axis].output_pwm = 0.0f;
-	      }
-	      Motors_StopAll();
-	      static uint8_t mode_message[] =
-	          "ACK CMD=CTRL_MODE VALUE=ATTITUDE FEEDBACK=IMU ENCODER=SUPERVISOR\r\n";
-	      TelemetryProtocol_Event(mode_message, sizeof(mode_message) - 1U);
-	    }
-	    else if (usb_command == USB_COMMAND_CONTROL_WHEEL_SPEED)
-	    {
-	      /* Command sign does not measure wheel direction during coasting or
-	         reversal. Do not expose a signed closed loop with invented feedback. */
-	      control_mode = CONTROL_MODE_ATTITUDE;
-	      /* Keep the operator PID request across calibration, faults and recovery. */
-	      roll_control.integral = 0.0f;
-	      pitch_control.integral = 0.0f;
-	      yaw_control.integral = 0.0f;
-	      Motors_StopAll();
-	      int length = snprintf(
-	          message,
-	          sizeof(message),
-	          "NACK CMD=CTRL_MODE REASON=SIGNED_RPM_UNOBSERVABLE_1CH "
-	          "GAINS_READY=%u,%u,%u DIR=ASSUMED_1CH\r\n",
-	          wheel_speed_control[MOTOR_AXIS_ROLL].gains_configured,
-	          wheel_speed_control[MOTOR_AXIS_PITCH].gains_configured,
-	          wheel_speed_control[MOTOR_AXIS_YAW].gains_configured);
-	      TelemetryProtocol_Event((uint8_t *)message, length);
-	    }
-	    else if (usb_command == USB_COMMAND_SET_WHEEL_RPM)
-	    {
-	      for (uint32_t axis = 0U; axis < MOTOR_AXIS_COUNT; axis++)
-	      {
-	        wheel_speed_control[axis].setpoint_rpm = pending_wheel_rpm[axis];
-	        wheel_speed_control[axis].integral = 0.0f;
-	      }
-	      int length = snprintf(
-	          message,
-	          sizeof(message),
-	          "ACK CMD=SET_WHEEL_RPM SP_m=%ld,%ld,%ld\r\n",
-	          (long)(pending_wheel_rpm[0] * 1000.0f),
-	          (long)(pending_wheel_rpm[1] * 1000.0f),
-	          (long)(pending_wheel_rpm[2] * 1000.0f));
-	      TelemetryProtocol_Event((uint8_t *)message, length);
-	    }
-	    else if (usb_command == USB_COMMAND_SET_WHEEL_PID)
-	    {
-	      WheelSpeedControl_t *wheel_pid =
-	          &wheel_speed_control[pending_wheel_axis];
-	      wheel_pid->kp = pending_wheel_pid_gain[0];
-	      wheel_pid->ki = pending_wheel_pid_gain[1];
-	      wheel_pid->kd = pending_wheel_pid_gain[2];
-	      wheel_pid->integral = 0.0f;
-	      wheel_pid->gains_configured =
-	          ((wheel_pid->kp > 0.0f)
-	           || (wheel_pid->ki > 0.0f)
-	           || (wheel_pid->kd > 0.0f)) ? 1U : 0U;
-	      int length = snprintf(
-	          message,
-	          sizeof(message),
-	          "ACK CMD=WHEEL_PID AXIS=%u KP_u6=%ld KI_u6=%ld KD_u6=%ld READY=%u\r\n",
-	          pending_wheel_axis,
-	          (long)(wheel_pid->kp * 1000000.0f),
-	          (long)(wheel_pid->ki * 1000000.0f),
-	          (long)(wheel_pid->kd * 1000000.0f),
-	          wheel_pid->gains_configured);
-	      TelemetryProtocol_Event((uint8_t *)message, length);
-	    }
-	    else if (usb_command == USB_COMMAND_SET_RPM_LIMIT)
-	    {
-	      memcpy(wheel_rpm_limit, pending_rpm_limit, sizeof(wheel_rpm_limit));
-	      int length = snprintf(
-	          message,
-	          sizeof(message),
-	          "ACK CMD=RPM_LIMIT VALUE_m=%ld,%ld,%ld\r\n",
-	          (long)(wheel_rpm_limit[0] * 1000.0f),
-	          (long)(wheel_rpm_limit[1] * 1000.0f),
-	          (long)(wheel_rpm_limit[2] * 1000.0f));
-	      TelemetryProtocol_Event((uint8_t *)message, length);
-	    }
-	    else if (usb_command == USB_COMMAND_ENCODER_CLEAR)
-	    {
-	      uint8_t can_clear=1U;
-	      for(unsigned axis=0;axis<MOTOR_AXIS_COUNT;axis++) {
-	        if(!WheelEncoder_CanClear((MotorAxis_t)axis))can_clear=0U;
-	      }
-	      if(!can_clear) {
-	        const uint8_t error[]="NACK CMD=ENCODER_CLEAR REASON=DISARM_AND_VERIFY_25_PULSES_PER_FAULTED_AXIS\r\n";
-	        TelemetryProtocol_Event(error,sizeof(error)-1U);
-	      } else {
-	      for (uint32_t axis = 0U; axis < MOTOR_AXIS_COUNT; axis++)
-	      {
-	        wheel_encoder[axis].fault_flags = 0U;
-	        wheel_encoder[axis].recovery_pulses = 0U;
-	      }
-	      static uint8_t clear_encoder_message[] =
-	          "ACK CMD=ENCODER_CLEAR FAULT=0,0,0\r\n";
-	      TelemetryProtocol_Event(
-	          clear_encoder_message, sizeof(clear_encoder_message) - 1U);
-	      }
 	    }
 	    else if (usb_command == USB_COMMAND_CAL_ACCEL_CANCEL)
 	    {
@@ -4222,6 +4075,7 @@ static void App_CommunicationService(uint8_t busy)
     }
   }
   static uint32_t snapshot_tick;
+  GpsUart_Service();
   uint32_t now=HAL_GetTick();
   if(now-snapshot_tick>=10U) {
     snapshot_tick=now;App_BuildSnapshot(&telemetry_data);
@@ -4240,6 +4094,12 @@ static void App_BuildSnapshot(TelemetryData *s)
 {
   memset(s,0,sizeof(*s));
   s->uptime_ms=HAL_GetTick();s->who=mpu_who_am_i;s->fusion=(uint8_t)fusion_status;
+  s->attitude_rp_gains_milli[0]=(int32_t)(ROLL_KP*1000.0f+0.5f);
+  s->attitude_rp_gains_milli[1]=(int32_t)(ROLL_KI*1000.0f+0.5f);
+  s->attitude_rp_gains_milli[2]=(int32_t)(ROLL_KD*1000.0f+0.5f);
+  s->attitude_yaw_gains_milli[0]=(int32_t)(YAW_KP*1000.0f+0.5f);
+  s->attitude_yaw_gains_milli[1]=(int32_t)(YAW_KI*1000.0f+0.5f);
+  s->attitude_yaw_gains_milli[2]=(int32_t)(YAW_KD*1000.0f+0.5f);
   s->imu_age_ms=last_imu_sample_ms?s->uptime_ms-last_imu_sample_ms:UINT32_MAX;
   s->attitude_valid=(mpu_status==HAL_OK && fusion_status==HAL_OK
       && s->imu_age_ms<=20U && !app_busy && !accel_calibration.active)?1U:0U;
@@ -4304,6 +4164,7 @@ static void App_BuildSnapshot(TelemetryData *s)
   s->altitude_mm=relative_altitude_mm;s->voltage_mv=ina219.bus_mv;s->current_ma10=ina219.current_ma_x10;s->power_mw=ina219.power_mw;
   s->battery_percent=ina219.valid?(int32_t)ClampFloat((float)(ina219.bus_mv-9600)*100/3000,0,100):-1;
   s->aht_milli_c=aht30.temperature_milli_c;s->humidity_milli=aht30.humidity_milli_percent;
+  s->gps_fix = GpsReceiver_Position(s->uptime_ms, &s->gps_lat_e7, &s->gps_lon_e7);
   s->sv=(bmp280.valid?1U:0U)|(ina219.valid?2U:0U)|(aht30.valid?4U:0U);
   const uint32_t max_env_age[3]={3U*BMP280_UPDATE_PERIOD_MS,3U*INA219_UPDATE_PERIOD_MS,
       3U*AHT30_UPDATE_PERIOD_MS+AHT30_MEASUREMENT_TIME_MS};
