@@ -41,8 +41,11 @@ Chi tiết byte offset, các macro cấu hình và phạm vi kiểm chứng nằ
   NaN, sequence/tick wrap, queue rejection và không có event TX.
 - `tools/test-current-uart.ps1`: kiểm thử serializer hai byte order, UART DMA,
   ESTOP và journal hiệu chuẩn.
-- `viewer/`, `radio/`: giao diện và cầu radio theo dòng text của các bản trước,
-  **chưa chuyển sang nhận gói binary V14**.
+- `viewer/`: giao diện Web Serial giải mã gói binary V14, hiển thị 10 trường,
+  mô hình 3D theo Roll/Pitch/Yaw và gửi 12 nhóm lệnh ASCII. Xem
+  [hướng dẫn viewer](viewer/README.md).
+- `radio/`: cầu radio theo dòng text của các bản trước,
+  **chưa chuyển sang truyền nguyên gói binary V14**.
 
 Bridge/parser cũ không được coi là tương thích. Muốn dùng V14 qua radio cần đường
 truyền byte nguyên vẹn hoặc parser binary theo header/length ở phía nhận.
