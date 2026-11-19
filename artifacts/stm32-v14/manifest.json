@@ -1,0 +1,163 @@
+{
+  "firmware": "AXIS_FRAME_RP_UART_CFE10_V14",
+  "buildDate": "2026-11-19",
+  "baselineCommit": "4314b4a",
+  "toolchain": "GNU ARM 14.3.rel1",
+  "build": "FULL_BUILD_OK",
+  "tests": "CURRENT_UART_TESTS_OK",
+  "elfCalibrationCheck": "PASS load end 0x0801DC2C",
+  "uart": "USART1 115200 8N1",
+  "packetBytes": 52,
+  "headerBytes": 12,
+  "payloadFloatCount": 10,
+  "messageId": "0x0881 provisional",
+  "payloadByteOrder": "little-endian",
+  "timestamp": "MCU uptime",
+  "flashed": false,
+  "hardwareVerified": false,
+  "receiverCompatibilityVerified": false,
+  "files": [
+    {
+      "path": "STM32CubeIDE.bin",
+      "sha256": "094DC774CD4DA26B0D7896BC324B75F9C1FC9EEBD4611D3FF1C0B2EF20276040",
+      "bytes": 121900
+    },
+    {
+      "path": "STM32CubeIDE.elf",
+      "sha256": "9863AE0C0F6F34F43FF80307AE03DD13D845536AA6515638092C27BC5A2AB29D",
+      "bytes": 1454148
+    },
+    {
+      "path": "STM32CubeIDE.hex",
+      "sha256": "8E21D7B2A4350B6E22DDA1640BAF1B0AC85815FC8A13037473B5FED8E72C7362",
+      "bytes": 342938
+    },
+    {
+      "path": "STM32CubeIDE.map",
+      "sha256": "D2B8780D24EF01181C65094CBFC59EC84DE6CAB3DC470367D4365DC0412A3CE4",
+      "bytes": 716337
+    }
+  ],
+  "sourceFiles": [
+    {
+      "path": "firmware/Core/Inc/adcs_math.h",
+      "sha256": "5E82919F8944C99046E083FFC744512836EB90C335DAF647CB2907EDAA968BF7"
+    },
+    {
+      "path": "firmware/Core/Inc/axis_frame.h",
+      "sha256": "110306E63C1DF8F01C86685271B2A06C226998AE633113726D1705F546ACBB2C"
+    },
+    {
+      "path": "firmware/Core/Inc/calibration_store.h",
+      "sha256": "7AEE54B474008ED9223049B6D26023AC66F6796AB4E19B8A4050F53BB427BD90"
+    },
+    {
+      "path": "firmware/Core/Inc/command_parser.h",
+      "sha256": "5998732F087550D91D87FB2E1C926FA2D173730A9FC3818D859BE57DA5E13FA2"
+    },
+    {
+      "path": "firmware/Core/Inc/dma.h",
+      "sha256": "D4C5792D793DBE887960A8F5E98DE901717E239A6390FD091BDE319B4DABD0F4"
+    },
+    {
+      "path": "firmware/Core/Inc/gps_receiver.h",
+      "sha256": "56E1D00E1EAB14B3ADB7385C992D6FDD49B493C746E9A6BD0015EC699751F5E5"
+    },
+    {
+      "path": "firmware/Core/Inc/gps_uart.h",
+      "sha256": "63A4EAE13E73EC46EC460C4265EDE119064E6EAF61FE8F8CFAFAF20CCA1B2028"
+    },
+    {
+      "path": "firmware/Core/Inc/heading_update.h",
+      "sha256": "CC543C625BA77B5A93AD8463FF9F96CFD6AEC682B4EB42DD7527831483C5E3A0"
+    },
+    {
+      "path": "firmware/Core/Inc/main.h",
+      "sha256": "7DDB53A56F8C3F1377047156EC5F2A5D041C4B027A977EEEB4999C1EA7D1C29C"
+    },
+    {
+      "path": "firmware/Core/Inc/stm32f4xx_hal_conf.h",
+      "sha256": "37A647B3DD20252C77EEEBB90D6D87998CDD63A7B4701CD52443ECCBD5449396"
+    },
+    {
+      "path": "firmware/Core/Inc/stm32f4xx_it.h",
+      "sha256": "63F4E69B814F79B31BEFBB5E38AA90F1401D2F9CA5D5C24B78EA6F4567BCAC99"
+    },
+    {
+      "path": "firmware/Core/Inc/telemetry_data.h",
+      "sha256": "2B235BBC273CA5D2F5BC0C9A93F35CE1E6668CCAA68746A68DBCE1A917DA4C44"
+    },
+    {
+      "path": "firmware/Core/Inc/telemetry_protocol.h",
+      "sha256": "C20A7654520CA3F22568FE8424DE21B8731BB7EC66B5B86184A728453A5AF778"
+    },
+    {
+      "path": "firmware/Core/Inc/telemetry_uart.h",
+      "sha256": "01A92C5A147D1DD82812AD90A8DC788E750EE6EBBD398384AACFFA4777916B66"
+    },
+    {
+      "path": "firmware/Core/Inc/usart.h",
+      "sha256": "689EDB7667701425580D81CC00A594323727E0A9443C292B598F2937314D64B2"
+    },
+    {
+      "path": "firmware/Core/Src/calibration_store.c",
+      "sha256": "BC6500456C6B252A348AEF7327658DAC1CEA51DDBA0FEB198D065B5DC4B9E859"
+    },
+    {
+      "path": "firmware/Core/Src/command_parser.c",
+      "sha256": "DBFD394C75504D6A8C27CFA6904BC55909D165CDC8FA2D09D4ECEBE70AA4DE56"
+    },
+    {
+      "path": "firmware/Core/Src/dma.c",
+      "sha256": "E6ECD5CCE2F38C65326A65AC81ED13A68CB7742514063052B367279223C8C705"
+    },
+    {
+      "path": "firmware/Core/Src/gps_receiver.c",
+      "sha256": "1729E5F53494CE20BE8BBB6658D0CF7CDCB54A764D5409B14ECA8195D69ADAB0"
+    },
+    {
+      "path": "firmware/Core/Src/gps_uart.c",
+      "sha256": "30398C655CDB91CFEFDF9BA0DE5835E2A116803FFFCAF045799A330CA4B62226"
+    },
+    {
+      "path": "firmware/Core/Src/main.c",
+      "sha256": "A1863946016DE63BD4D014077E46EBE86CFE5FDAE2AF015B6EB8C36D3FCE8D9E"
+    },
+    {
+      "path": "firmware/Core/Src/stm32f4xx_hal_msp.c",
+      "sha256": "7E6760AEBB3EF5DC9B5624CC15C4C2869FEABBB773C41CB47AD0D56592B57398"
+    },
+    {
+      "path": "firmware/Core/Src/stm32f4xx_it.c",
+      "sha256": "C743CC9F86CEDA82CFE182CF4DA6AC77F9165DF6EE4398E0CDBD8EE3207B3890"
+    },
+    {
+      "path": "firmware/Core/Src/syscalls.c",
+      "sha256": "B993EBB4F882E8BE21CEC8D95983655A0CAF4F0EB11348F20F6371F5A5031717"
+    },
+    {
+      "path": "firmware/Core/Src/sysmem.c",
+      "sha256": "C41145817CC20ABD8881C38851745D6E509E5F8C44A5179B125D108E51D1D432"
+    },
+    {
+      "path": "firmware/Core/Src/system_stm32f4xx.c",
+      "sha256": "A31929EAB936AC98DB060C18917118ACF79DC96E1F03ED4B57D614535DD06D70"
+    },
+    {
+      "path": "firmware/Core/Src/telemetry_protocol.c",
+      "sha256": "986E49C1E9193882F9838BE6CF0F5E6B1BE2776E120E309ECBD42F474DDDD513"
+    },
+    {
+      "path": "firmware/Core/Src/telemetry_uart.c",
+      "sha256": "D00F5192CB6701A815548E27B407E6BFC528921D295ADD1107D6A743BE70C88E"
+    },
+    {
+      "path": "firmware/Core/Src/usart.c",
+      "sha256": "A6F54DC9687D313EDA1E50511BD9893D7EE62BC63D7369E6A55D6FC20FEAEC68"
+    },
+    {
+      "path": "firmware/Core/Startup/startup_stm32f405rgtx.s",
+      "sha256": "C26C40EA8A4C27E4A7900E1D29BDFD6CDF6B46FBF4CBEBAD116A478803BBCB8E"
+    }
+  ]
+}
